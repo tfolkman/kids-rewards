@@ -1,9 +1,15 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from mangum import Mangum # Import Mangum
 from datetime import timedelta
 
-from . import crud, models, security
+# Assuming main.py, crud.py, models.py, security.py are all in LAMBDA_TASK_ROOT (/var/task)
+# and __init__.py makes this directory a package.
+# For Lambda containers, often direct imports work if LAMBDA_TASK_ROOT is in sys.path.
+import crud
+import models
+import security
 
 # --- Authentication Setup ---
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -30,9 +36,6 @@ async def get_current_active_user(current_user: models.User = Depends(get_curren
 app = FastAPI()
 
 # --- CORS Middleware ---
-# Define the origins that are allowed to make requests.
-# For development, this is typically your frontend's address.
-# For production, you'd restrict this to your actual frontend domain.
 origins = [
     "http://localhost:3000", # React default dev port
     # You might add your Amplify frontend URL here later for production
@@ -40,13 +43,19 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # Allows specific origins
-    allow_credentials=True, # Allows cookies to be included in requests
-    allow_methods=["*"],    # Allows all methods (GET, POST, PUT, DELETE, etc.)
-    allow_headers=["*"],    # Allows all headers
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- Endpoints ---
+
+# Lambda handler - Mangum wraps the FastAPI app
+# This 'handler' is what AWS Lambda will look for.
+handler = Mangum(app)
+
+
 @app.post("/token", response_model=models.Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     user = crud.get_user_by_username(form_data.username)
@@ -91,7 +100,6 @@ async def get_current_kid_user(current_user: models.User = Depends(get_current_a
         )
     if current_user.points is None: # Should always be set for kids, but good to check
         current_user.points = 0 # Initialize if somehow None
-        # Potentially log this anomaly or handle as an error
     return current_user
 
 # --- Points Management Endpoints ---
@@ -106,7 +114,6 @@ async def award_points_to_kid(
     
     updated_kid_user = crud.update_user_points(username=award.kid_username, points_to_add=award.points)
     if not updated_kid_user:
-        # This case should ideally be caught by the check above, but as a safeguard
         raise HTTPException(status_code=500, detail="Could not award points")
     return updated_kid_user
 
@@ -122,13 +129,9 @@ async def redeem_store_item(
     if current_user.points is None or current_user.points < store_item.points_cost:
         raise HTTPException(status_code=400, detail="Not enough points to redeem this item")
 
-    # Deduct points
     updated_user = crud.update_user_points(username=current_user.username, points_to_add=-store_item.points_cost)
     if not updated_user:
         raise HTTPException(status_code=500, detail="Could not redeem item due to an internal error")
-    
-    # Here you might add logic to log the redemption, notify parents, etc.
-    # For now, we just return the updated user (with fewer points).
     return updated_user
 
 # --- Store Item Endpoints ---
@@ -170,7 +173,7 @@ async def delete_store_item(
     success = crud.delete_store_item(item_id=item_id)
     if not success:
         raise HTTPException(status_code=404, detail="Store item not found")
-    return None # FastAPI will return 204 No Content
+    return None
 
 @app.get("/")
 async def read_root():

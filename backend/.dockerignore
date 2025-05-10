@@ -1,0 +1,23 @@
+# Ignore virtualenv
+.venv/
+venv/
+
+# Ignore Python cache and compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Ignore OS-specific files
+.DS_Store
+Thumbs.db
+
+# Ignore Git files (though usually not in the build context anyway)
+.git/
+.gitignore
+
+# Ignore other local development files if any
+# e.g., local_settings.py, .env
+
+# If you have a separate test directory you don't want in the image:
+# tests/

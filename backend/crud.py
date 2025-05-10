@@ -7,7 +7,8 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
 
-from . import models, security
+import models
+import security
 
 # --- DynamoDB Setup ---
 DYNAMODB_ENDPOINT_URL = os.getenv("DYNAMODB_ENDPOINT_URL") # For local testing e.g. 'http://localhost:8000'
