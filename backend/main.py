@@ -1,0 +1,181 @@
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from datetime import timedelta
+
+from . import crud, models, security
+
+# --- Authentication Setup ---
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# --- Dependency to get current user ---
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> models.User:
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    username = security.decode_access_token(token)
+    if username is None:
+        raise credentials_exception
+    user = crud.get_user_by_username(username)
+    if user is None:
+        raise credentials_exception
+    return user
+
+async def get_current_active_user(current_user: models.User = Depends(get_current_user)) -> models.User:
+    # We could add a check here for `is_active` if we implement that in the User model
+    return current_user
+
+app = FastAPI()
+
+# --- CORS Middleware ---
+# Define the origins that are allowed to make requests.
+# For development, this is typically your frontend's address.
+# For production, you'd restrict this to your actual frontend domain.
+origins = [
+    "http://localhost:3000", # React default dev port
+    # You might add your Amplify frontend URL here later for production
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,  # Allows specific origins
+    allow_credentials=True, # Allows cookies to be included in requests
+    allow_methods=["*"],    # Allows all methods (GET, POST, PUT, DELETE, etc.)
+    allow_headers=["*"],    # Allows all headers
+)
+
+# --- Endpoints ---
+@app.post("/token", response_model=models.Token)
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+    user = crud.get_user_by_username(form_data.username)
+    if not user or not security.verify_password(form_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = security.create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/users/", response_model=models.User, status_code=status.HTTP_201_CREATED)
+async def create_user(user: models.UserCreate):
+    db_user = crud.get_user_by_username(user.username)
+    if db_user:
+        raise HTTPException(status_code=400, detail="Username already registered")
+    return crud.create_user(user_in=user)
+
+@app.get("/users/me/", response_model=models.User)
+async def read_users_me(current_user: models.User = Depends(get_current_active_user)):
+    return current_user
+
+# --- Dependency for Parent-only actions ---
+async def get_current_parent_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:
+    if current_user.role != models.UserRole.PARENT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operation not permitted for this user role",
+        )
+    return current_user
+
+# --- Dependency for Kid-only actions ---
+async def get_current_kid_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:
+    if current_user.role != models.UserRole.KID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operation not permitted for this user role",
+        )
+    if current_user.points is None: # Should always be set for kids, but good to check
+        current_user.points = 0 # Initialize if somehow None
+        # Potentially log this anomaly or handle as an error
+    return current_user
+
+# --- Points Management Endpoints ---
+@app.post("/kids/award-points/", response_model=models.User)
+async def award_points_to_kid(
+    award: models.PointsAward,
+    current_user: models.User = Depends(get_current_parent_user) # Parent only
+):
+    kid_user = crud.get_user_by_username(award.kid_username)
+    if not kid_user or kid_user.role != models.UserRole.KID:
+        raise HTTPException(status_code=404, detail="Kid user not found or user is not a kid")
+    
+    updated_kid_user = crud.update_user_points(username=award.kid_username, points_to_add=award.points)
+    if not updated_kid_user:
+        # This case should ideally be caught by the check above, but as a safeguard
+        raise HTTPException(status_code=500, detail="Could not award points")
+    return updated_kid_user
+
+@app.post("/kids/redeem-item/", response_model=models.User)
+async def redeem_store_item(
+    redemption: models.RedemptionRequest,
+    current_user: models.User = Depends(get_current_kid_user) # Kid only
+):
+    store_item = crud.get_store_item_by_id(redemption.item_id)
+    if not store_item:
+        raise HTTPException(status_code=404, detail="Store item not found")
+
+    if current_user.points is None or current_user.points < store_item.points_cost:
+        raise HTTPException(status_code=400, detail="Not enough points to redeem this item")
+
+    # Deduct points
+    updated_user = crud.update_user_points(username=current_user.username, points_to_add=-store_item.points_cost)
+    if not updated_user:
+        raise HTTPException(status_code=500, detail="Could not redeem item due to an internal error")
+    
+    # Here you might add logic to log the redemption, notify parents, etc.
+    # For now, we just return the updated user (with fewer points).
+    return updated_user
+
+# --- Store Item Endpoints ---
+@app.post("/store/items/", response_model=models.StoreItem, status_code=status.HTTP_201_CREATED)
+async def create_store_item(
+    item: models.StoreItemCreate,
+    current_user: models.User = Depends(get_current_parent_user) # Parent only
+):
+    return crud.create_store_item(item_in=item)
+
+@app.get("/store/items/", response_model=list[models.StoreItem])
+async def read_store_items(skip: int = 0, limit: int = 100):
+    items = crud.get_store_items()
+    return items[skip : skip + limit]
+
+@app.get("/store/items/{item_id}", response_model=models.StoreItem)
+async def read_store_item(item_id: str):
+    db_item = crud.get_store_item_by_id(item_id)
+    if db_item is None:
+        raise HTTPException(status_code=404, detail="Store item not found")
+    return db_item
+
+@app.put("/store/items/{item_id}", response_model=models.StoreItem)
+async def update_store_item(
+    item_id: str,
+    item: models.StoreItemCreate,
+    current_user: models.User = Depends(get_current_parent_user) # Parent only
+):
+    db_item = crud.update_store_item(item_id=item_id, item_in=item)
+    if db_item is None:
+        raise HTTPException(status_code=404, detail="Store item not found")
+    return db_item
+
+@app.delete("/store/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_store_item(
+    item_id: str,
+    current_user: models.User = Depends(get_current_parent_user) # Parent only
+):
+    success = crud.delete_store_item(item_id=item_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Store item not found")
+    return None # FastAPI will return 204 No Content
+
+@app.get("/")
+async def read_root():
+    return {"message": "Kids Rewards API is running!"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy"}
