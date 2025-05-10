@@ -38,7 +38,8 @@ app = FastAPI()
 # --- CORS Middleware ---
 origins = [
     "http://localhost:3000", # React default dev port
-    # You might add your Amplify frontend URL here later for production
+    "https://main.dd0mqanef4wnt.amplifyapp.com", # Your deployed Amplify frontend
+    # You might add other custom domains here later
 ]
 
 app.add_middleware(
