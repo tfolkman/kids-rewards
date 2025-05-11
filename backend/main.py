@@ -83,6 +83,16 @@ async def create_user(user: models.UserCreate):
 async def read_users_me(current_user: models.User = Depends(get_current_active_user)):
     return current_user
 
+@app.post("/users/promote-to-parent", response_model=models.User)
+async def promote_user_to_parent_endpoint(
+    promotion_request: models.UserPromoteRequest,
+    current_admin_user: models.User = Depends(get_current_parent_user) # Only parents can promote
+):
+    user_to_promote = crud.promote_user_to_parent(promotion_request.username)
+    if not user_to_promote:
+        raise HTTPException(status_code=404, detail=f"User {promotion_request.username} not found or could not be promoted.")
+    return user_to_promote
+
 # --- Dependency for Parent-only actions ---
 async def get_current_parent_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:
     if current_user.role != models.UserRole.PARENT:

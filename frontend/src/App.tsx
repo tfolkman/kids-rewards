@@ -28,12 +28,13 @@ import {
     MantineTheme
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, IconLogout, IconSettings, IconAward } from '@tabler/icons-react';
+import { IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, IconLogout, IconSettings, IconAward, IconUserUp } from '@tabler/icons-react'; // Added IconUserUp
 import '@mantine/core/styles.css';
 import './App.css';
 import * as api from './services/api';
 import ManageStoreItems from './components/ManageStoreItems';
 import AwardPoints from './components/AwardPoints';
+import UserManagement from './components/UserManagement'; // Import UserManagement
 
 // --- Context for Auth ---
 interface AuthContextType {
@@ -128,7 +129,7 @@ const SignupPage = () => {
     const { setCurrentUser } = useAuth();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [role, setRole] = useState<'parent' | 'kid'>('kid');
+    // const [role, setRole] = useState<'parent' | 'kid'>('kid'); // Role is now fixed to 'kid' on signup
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -137,7 +138,9 @@ const SignupPage = () => {
         setError('');
         setLoading(true);
         try {
-            await api.signup({ username, password, role });
+            // Role is no longer sent from frontend, backend will default to 'kid'
+            // UserCreate interface in api.ts no longer has 'role'
+            await api.signup({ username, password });
             const formData = new FormData();
             formData.append('username', username);
             formData.append('password', password);
@@ -174,17 +177,7 @@ const SignupPage = () => {
                             value={password}
                             onChange={(event) => setPassword(event.currentTarget.value)}
                         />
-                        <Select
-                            label="Role"
-                            placeholder="Are you a Parent or a Kid?"
-                            value={role}
-                            onChange={(value) => setRole(value as 'parent' | 'kid')}
-                            data={[
-                                { value: 'kid', label: 'Kid' },
-                                { value: 'parent', label: 'Parent' },
-                            ]}
-                            required
-                        />
+                        {/* Role selection removed */}
                         {error && (
                              <Alert icon={<IconAlertCircle size="1rem" />} title="Signup Error" color="red" radius="md">
                                 {error}
@@ -245,6 +238,13 @@ const Dashboard = () => {
                                 <Title order={4}>Manage Store Items</Title>
                             </Group>
                             <ManageStoreItems />
+                        </Paper>
+                        <Paper>
+                            <Group gap="xs" mb="md">
+                                <IconUserUp size={20} color={theme.colors.blue[7]}/> {/* Changed Icon */}
+                                <Title order={4}>User Management</Title>
+                            </Group>
+                            <UserManagement />
                         </Paper>
                     </Stack>
                 </>
@@ -424,10 +424,10 @@ const App: React.FC = () => {
                     ))}
                     {currentUser.role === 'parent' && (
                         <NavLink
-                            label="Parent Dashboard"
+                            label="Parent Controls" // Changed label for clarity
                             leftSection={<IconSettings size="1rem" stroke={1.5} />}
                             component={RouterLink}
-                            to="/" 
+                            to="/" // Links to Dashboard where parent tools are
                             active={location.pathname === "/"}
                              onClick={() => {
                                 navigate("/");

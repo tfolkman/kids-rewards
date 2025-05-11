@@ -8,12 +8,14 @@ class UserRole(str, Enum):
 
 class UserBase(BaseModel):
     username: str
-    role: UserRole
+    # role: UserRole # Role will be part of User model, not necessarily UserBase for creation
 
-class UserCreate(UserBase):
+class UserCreate(BaseModel): # No longer inherits UserBase directly if role is removed for creation
+    username: str
     password: str
 
-class User(UserBase):
+class User(UserBase): # User still has a role
+    role: UserRole
     id: str # Or int, depending on DB
     hashed_password: str
     points: Optional[int] = None # Only applicable for kids
@@ -51,3 +53,6 @@ class PointsAward(BaseModel):
 
 class RedemptionRequest(BaseModel):
     item_id: str # Or int
+
+class UserPromoteRequest(BaseModel):
+    username: str

@@ -59,14 +59,14 @@ def create_user(user_in: models.UserCreate) -> models.User:
     # For simplicity, let's assume 'id' in the model is the username for now.
     
     user_data = {
-        'id': user_in.username, # Using username as ID for simplicity here
+        'id': user_in.username, # Using username as ID
         'username': user_in.username,
         'hashed_password': hashed_password,
-        'role': user_in.role.value, # Store enum value
-        'points': 0 if user_in.role == models.UserRole.KID else None
+        'role': models.UserRole.KID.value, # Always create as KID
+        'points': 0 # Kids always start with 0 points
     }
-    # Filter out None values for DynamoDB, especially for 'points' if parent
-    user_item = {k: v for k, v in user_data.items() if v is not None}
+    # All fields are now non-optional for the initial DynamoDB item
+    user_item = user_data
 
     try:
         users_table.put_item(Item=user_item)
@@ -99,6 +99,34 @@ def update_user_points(username: str, points_to_add: int) -> Optional[models.Use
         return None # Should not happen if update is successful
     except ClientError as e:
         print(f"Error updating points for user {username}: {e}")
+        return None
+
+def promote_user_to_parent(username: str) -> Optional[models.User]:
+    user = get_user_by_username(username)
+    if not user:
+        return None # User not found
+
+    if user.role == models.UserRole.PARENT:
+        return user # Already a parent
+
+    try:
+        response = users_table.update_item(
+            Key={'username': username},
+            UpdateExpression="SET #r = :r REMOVE points", # Set role to parent and remove points attribute
+            ExpressionAttributeNames={'#r': 'role'}, # 'role' is not a reserved keyword but good practice
+            ExpressionAttributeValues={':r': models.UserRole.PARENT.value},
+            ReturnValues="ALL_NEW"
+        )
+        updated_attributes = response.get('Attributes')
+        if updated_attributes:
+            # Ensure points is None for parent role in the returned model
+            if 'points' in updated_attributes: # Should have been removed by REMOVE
+                del updated_attributes['points']
+            updated_attributes['points'] = None # Explicitly set to None for Pydantic model
+            return models.User(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        print(f"Error promoting user {username} to parent: {e}")
         return None
 
 # --- Store Item CRUD ---

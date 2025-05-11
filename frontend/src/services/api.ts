@@ -37,7 +37,7 @@ export interface User {
 export interface UserCreate {
   username: string;
   password: string;
-  role: 'parent' | 'kid';
+  // role is no longer set by the client during creation
 }
 
 export interface TokenResponse {
@@ -69,6 +69,9 @@ export interface RedemptionRequestData {
     item_id: string;
 }
 
+export interface UserPromoteData {
+    username: string;
+}
 
 // --- API Service Functions ---
 
@@ -78,6 +81,7 @@ export const login = (data: FormData) => apiClient.post<TokenResponse>('/token',
 });
 export const signup = (data: UserCreate) => apiClient.post<User>('/users/', data);
 export const getCurrentUser = () => apiClient.get<User>('/users/me/');
+export const promoteToParent = (data: UserPromoteData) => apiClient.post<User>('/users/promote-to-parent', data);
 
 // Store Items
 export const getStoreItems = () => apiClient.get<StoreItem[]>('/store/items/');
