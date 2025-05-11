@@ -19,8 +19,8 @@ class User(UserBase):
     points: Optional[int] = None # Only applicable for kids
 
     class Config:
-        orm_mode = True # Changed from from_attributes for Pydantic v2
-        # For Pydantic v1, use: from_attributes = True
+        from_attributes = True # For Pydantic V2
+        # orm_mode = True # For Pydantic V1
 
 class Token(BaseModel):
     access_token: str
@@ -41,8 +41,8 @@ class StoreItem(StoreItemBase):
     id: str # Or int
 
     class Config:
-        orm_mode = True # Changed from from_attributes for Pydantic v2
-        # For Pydantic v1, use: from_attributes = True
+        from_attributes = True # For Pydantic V2
+        # orm_mode = True # For Pydantic V1
 
 class PointsAward(BaseModel):
     kid_username: str
