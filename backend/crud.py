@@ -70,9 +70,15 @@ def create_user(user_in: models.UserCreate) -> models.User:
 
     try:
         users_table.put_item(Item=user_item)
-        # Fetch the created user to return it (or construct from user_item)
-        # Pydantic model expects role to be UserRole enum, not string
-        return models.User(**user_data)
+        # Construct the User model for return, ensuring role is the enum type
+        user_for_response = models.User(
+            id=user_data['id'],
+            username=user_data['username'],
+            hashed_password=user_data['hashed_password'],
+            role=models.UserRole.KID, # Use the enum member directly
+            points=user_data['points']
+        )
+        return user_for_response
     except ClientError as e:
         print(f"Error creating user {user_in.username}: {e}")
         # Consider raising a custom exception or re-raising

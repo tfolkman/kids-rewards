@@ -33,6 +33,26 @@ async def get_current_active_user(current_user: models.User = Depends(get_curren
     # We could add a check here for `is_active` if we implement that in the User model
     return current_user
 
+# --- Dependency for Parent-only actions ---
+async def get_current_parent_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:
+    if current_user.role != models.UserRole.PARENT:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operation not permitted for this user role",
+        )
+    return current_user
+
+# --- Dependency for Kid-only actions ---
+async def get_current_kid_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:
+    if current_user.role != models.UserRole.KID:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Operation not permitted for this user role",
+        )
+    if current_user.points is None: # Should always be set for kids, but good to check
+        current_user.points = 0 # Initialize if somehow None
+    return current_user
+
 app = FastAPI()
 
 # --- CORS Middleware ---
@@ -92,26 +112,6 @@ async def promote_user_to_parent_endpoint(
     if not user_to_promote:
         raise HTTPException(status_code=404, detail=f"User {promotion_request.username} not found or could not be promoted.")
     return user_to_promote
-
-# --- Dependency for Parent-only actions ---
-async def get_current_parent_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:
-    if current_user.role != models.UserRole.PARENT:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Operation not permitted for this user role",
-        )
-    return current_user
-
-# --- Dependency for Kid-only actions ---
-async def get_current_kid_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:
-    if current_user.role != models.UserRole.KID:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Operation not permitted for this user role",
-        )
-    if current_user.points is None: # Should always be set for kids, but good to check
-        current_user.points = 0 # Initialize if somehow None
-    return current_user
 
 # --- Points Management Endpoints ---
 @app.post("/kids/award-points/", response_model=models.User)
