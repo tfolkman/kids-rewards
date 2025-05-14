@@ -1,0 +1,8 @@
+{
+  "KidsRewardsLambdaFunction": {
+    "DYNAMODB_ENDPOINT_OVERRIDE": "http://dynamodb-local:8000",
+    "USERS_TABLE_NAME": "KidsRewardsUsers",
+    "STORE_ITEMS_TABLE_NAME": "KidsRewardsStoreItems",
+    "APP_SECRET_KEY": "34d5f50294422a9e6caa9add0cc8c5c4ef6fb77c293ea0ee5049fb79a4bd422e"
+  }
+}

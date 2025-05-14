@@ -51,3 +51,5 @@ frontend/build/
 .idea/
 *.swp
 *~
+# Environment-specific files
+local-env.json

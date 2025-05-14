@@ -67,10 +67,8 @@ const LoginPage = () => {
         setError('');
         setLoading(true);
         try {
-            const formData = new FormData();
-            formData.append('username', username);
-            formData.append('password', password);
-            const response = await api.login(formData);
+            // Pass username and password directly to api.login
+            const response = await api.login(username, password);
             localStorage.setItem('token', response.data.access_token);
             const userResponse = await api.getCurrentUser();
             setCurrentUser(userResponse.data);
@@ -80,6 +78,12 @@ const LoginPage = () => {
             console.error(err);
         } finally {
             setLoading(false);
+            try {
+                const helloResponse = await api.helloWorld();
+                console.log("Hello response:", helloResponse.data.message);
+            } catch (helloErr) {
+                console.error("Error calling hello endpoint:", helloErr);
+            }
         }
     };
 
@@ -141,10 +145,8 @@ const SignupPage = () => {
             // Role is no longer sent from frontend, backend will default to 'kid'
             // UserCreate interface in api.ts no longer has 'role'
             await api.signup({ username, password });
-            const formData = new FormData();
-            formData.append('username', username);
-            formData.append('password', password);
-            const tokenResponse = await api.login(formData);
+            // Pass username and password directly to api.login after successful signup
+            const tokenResponse = await api.login(username, password);
             localStorage.setItem('token', tokenResponse.data.access_token);
             const userResponse = await api.getCurrentUser();
             setCurrentUser(userResponse.data);

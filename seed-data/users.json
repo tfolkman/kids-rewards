@@ -1,0 +1,13 @@
+[
+  {
+    "username": "testkid",
+    "hashed_password": "placeholder_hashed_password",
+    "role": "KID",
+    "points": 100
+  },
+  {
+    "username": "testparent",
+    "hashed_password": "placeholder_hashed_password",
+    "role": "PARENT"
+  }
+]

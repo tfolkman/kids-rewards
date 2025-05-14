@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -5,7 +6,11 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 # Configuration
-SECRET_KEY = "your-super-secret-key"  # CHANGE THIS IN PRODUCTION!
+SECRET_KEY = os.getenv("APP_SECRET_KEY")
+if not SECRET_KEY:
+    # For a Lambda, failing to start if the key isn't set is a safe default.
+    # This ensures the application doesn't run with an insecure default key.
+    raise ValueError("CRITICAL: APP_SECRET_KEY environment variable is not set. Application cannot start securely.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 

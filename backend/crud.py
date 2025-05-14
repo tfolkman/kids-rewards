@@ -11,17 +11,19 @@ import models
 import security
 
 # --- DynamoDB Setup ---
-DYNAMODB_ENDPOINT_URL = os.getenv("DYNAMODB_ENDPOINT_URL") # For local testing e.g. 'http://localhost:8000'
+DYNAMODB_ENDPOINT_OVERRIDE = os.getenv("DYNAMODB_ENDPOINT_OVERRIDE") # For local testing e.g. 'http://localhost:8000'
 AWS_REGION = os.getenv("AWS_REGION", "us-west-2") # Default to us-west-2
 
-if DYNAMODB_ENDPOINT_URL:
-    dynamodb = boto3.resource('dynamodb', endpoint_url=DYNAMODB_ENDPOINT_URL, region_name=AWS_REGION)
+# These should be defined regardless of local or deployed environment
+USERS_TABLE_NAME = os.getenv("USERS_TABLE_NAME", "KidsRewardsUsers") # Default for safety, but should be set by SAM
+STORE_ITEMS_TABLE_NAME = os.getenv("STORE_ITEMS_TABLE_NAME", "KidsRewardsStoreItems") # Default for safety
+
+if DYNAMODB_ENDPOINT_OVERRIDE:
+    dynamodb = boto3.resource('dynamodb', endpoint_url=DYNAMODB_ENDPOINT_OVERRIDE, region_name=AWS_REGION)
 else:
     dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
-
-USERS_TABLE_NAME = "KidsRewardsUsers"
-STORE_ITEMS_TABLE_NAME = "KidsRewardsStoreItems"
-
+    
+# Table resources are now initialized after dynamodb client is configured
 users_table = dynamodb.Table(USERS_TABLE_NAME)
 store_items_table = dynamodb.Table(STORE_ITEMS_TABLE_NAME)
 

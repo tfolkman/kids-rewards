@@ -1,0 +1,14 @@
+[
+  {
+    "id": "item1",
+    "name": "Extra Screen Time (30 mins)",
+    "description": "Get an extra 30 minutes of screen time.",
+    "points_cost": 50
+  },
+  {
+    "id": "item2",
+    "name": "Choose Dinner",
+    "description": "Choose what's for dinner tonight.",
+    "points_cost": 100
+  }
+]

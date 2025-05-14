@@ -76,9 +76,15 @@ export interface UserPromoteData {
 // --- API Service Functions ---
 
 // Auth
-export const login = (data: FormData) => apiClient.post<TokenResponse>('/token', data, {
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' } // FastAPI's OAuth2PasswordRequestForm expects this
-});
+export const login = (username: string, password: string) => {
+    const data = new URLSearchParams();
+    data.append('username', username);
+    data.append('password', password);
+
+    return apiClient.post<TokenResponse>('/token', data, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' } // FastAPI's OAuth2PasswordRequestForm expects this
+    });
+};
 export const signup = (data: UserCreate) => apiClient.post<User>('/users/', data);
 export const getCurrentUser = () => apiClient.get<User>('/users/me/');
 export const promoteToParent = (data: UserPromoteData) => apiClient.post<User>('/users/promote-to-parent', data);
@@ -94,5 +100,7 @@ export const getStoreItemById = (itemId: string) => apiClient.get<StoreItem>(`/s
 // Points Management
 export const awardPoints = (data: PointsAwardData) => apiClient.post<User>('/kids/award-points/', data);
 export const redeemItem = (data: RedemptionRequestData) => apiClient.post<User>('/kids/redeem-item/', data);
+
+export const helloWorld = () => apiClient.get<{ message: string }>('/hello');
 
 export default apiClient;

@@ -1,0 +1,70 @@
+name: Deploy Production Backend
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: # Optionally add a URL to the production environment here
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x' # Specify the Python version you use
+
+      - name: Install SAM CLI
+        run: |
+          pip install aws-sam-cli
+
+      - name: Build SAM project
+        run: |
+          cd backend
+          sam build
+
+      - name: Package SAM template
+        run: |
+          cd backend
+          sam package \
+            --output-template-file packaged.yaml \
+            --s3-bucket YOUR_SAM_DEPLOYMENT_BUCKET_NAME # Replace with your S3 bucket name
+
+      - name: Deploy SAM stack
+        run: |
+          cd backend
+          sam deploy \
+            --template-file packaged.yaml \
+            --stack-name kids-rewards-prod \
+            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+            --parameter-overrides \
+              StageName=prod \
+              TableNamePrefix=prod- \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Production Data Handling (Notes)
+        run: |
+          echo "Note: Consider your strategy for production data."
+          echo "You might need steps here for database migrations or specific production data seeding."
+          echo "Avoid running the test data seeding script directly in production unless that's your intended approach."
+
+      - name: Production Frontend Deployment (Notes)
+        run: |
+          echo "Note: This workflow only deploys the backend."
+          echo "Ensure your production frontend deployment process is triggered after a successful backend deployment"
+          echo "and is configured to use the production backend API Gateway URL."

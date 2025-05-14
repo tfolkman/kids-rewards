@@ -1,0 +1,87 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  kids-rewards-backend
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 128
+
+Parameters:
+  TableNamePrefix:
+    Type: String
+    Description: Prefix for DynamoDB table names (e.g., dev-, staging-, prod-)
+    Default: ''
+
+Resources:
+  KidsRewardsLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Zip
+      CodeUri: .
+      Handler: main.handler # Assuming main.py has a handler function
+      Runtime: python3.12
+      Architectures:
+        - x86_64
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /{proxy+} # Define a proxy path event
+            Method: any
+            # Cors block removed to delegate CORS handling to the FastAPI application
+      Environment:
+        Variables:
+          DYNAMODB_ENDPOINT_OVERRIDE: !If [IsLocalEnvironment, !Ref LocalDynamoDBEndpoint, !Ref "AWS::NoValue"] # Use local endpoint if parameter is provided
+          USERS_TABLE_NAME: !If [IsLocalEnvironment, "local-my-table", !Sub "${TableNamePrefix}my-table"]
+          STORE_ITEMS_TABLE_NAME: !If [IsLocalEnvironment, "local-store-items-table", !Sub "${TableNamePrefix}store-items-table"]
+          APP_SECRET_KEY: "34d5f50294422a9e6caa9add0cc8c5c4ef6fb77c293ea0ee5049fb79a4bd422e" # Add this line
+
+  KidsRewardsTable: # New DynamoDB Table Resource
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "local-my-table", !Sub "${TableNamePrefix}my-table"] # Use local name if local env
+      AttributeDefinitions:
+        - AttributeName: username
+          AttributeType: S
+      KeySchema:
+        - AttributeName: username
+          KeyType: HASH
+      ProvisionedThroughput: # Or use OnDemandThroughput
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  KidsRewardsStoreItemsTable: # New DynamoDB Table Resource for Store Items
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "local-store-items-table", !Sub "${TableNamePrefix}store-items-table"] # Use local name if local env
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S # Assuming id is a string, adjust if needed
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput: # Or use OnDemandThroughput
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+Conditions:
+  IsLocalEnvironment: !Not [!Equals [!Ref LocalDynamoDBEndpoint, ""]] # Condition to check if local endpoint is provided
+
+Parameters:
+  LocalDynamoDBEndpoint:
+    Type: String
+    Description: Local DynamoDB endpoint (e.g., http://localhost:8000)
+    Default: "" # Default to empty string, indicating not a local environment
+
+Outputs:
+  KidsRewardsApi:
+    Description: "API Gateway endpoint URL for Prod stage for Kids Rewards function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  KidsRewardsLambdaFunction:
+    Description: "Kids Rewards Lambda Function ARN"
+    Value: !GetAtt KidsRewardsLambdaFunction.Arn
+  KidsRewardsLambdaFunctionIamRole:
+    Description: "Implicit IAM Role created for Kids Rewards function"
+    Value: !GetAtt KidsRewardsLambdaFunctionRole.Arn

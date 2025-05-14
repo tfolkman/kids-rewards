@@ -57,7 +57,8 @@ app = FastAPI()
 
 # --- CORS Middleware ---
 origins = [
-    "http://localhost:3000", # React default dev port
+    "http://localhost:3000", # React default dev port # Assuming this might still be used or for other services
+    "http://localhost:3001", # Frontend dev server port
     "https://main.dd0mqanef4wnt.amplifyapp.com", # Your deployed Amplify frontend
     # You might add other custom domains here later
 ]
@@ -66,8 +67,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["*"], # Allows all methods
+    allow_headers=["*"], # Allows all headers
 )
 
 # --- Endpoints ---
@@ -90,7 +91,9 @@ async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(
     access_token = security.create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
-    return {"access_token": access_token, "token_type": "bearer"}
+    response = {"access_token": access_token, "token_type": "bearer"}
+    # headers = {"Access-Control-Allow-Origin": "http://localhost:3001"} # Middleware will handle this
+    return response # FastAPI will handle status and headers correctly with middleware
 
 @app.post("/users/", response_model=models.User, status_code=status.HTTP_201_CREATED)
 async def create_user(user: models.UserCreate):
@@ -193,3 +196,9 @@ async def read_root():
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.get("/hello")
+async def hello_world():
+    response = {"message": "Hello, world!"}
+    # headers = {"Access-Control-Allow-Origin": "http://localhost:3001"} # Middleware will handle this
+    return response # FastAPI will handle status and headers correctly with middleware
