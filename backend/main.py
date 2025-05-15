@@ -1,24 +1,25 @@
-from fastapi import FastAPI, Depends, HTTPException, status
-from typing import List
-from fastapi.middleware.cors import CORSMiddleware
-from models import User
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from mangum import Mangum # Import Mangum
-from datetime import timedelta
-
 # Assuming main.py, crud.py, models.py, security.py are all in LAMBDA_TASK_ROOT (/var/task)
 # and __init__.py makes this directory a package.
 # For Lambda containers, often direct imports work if LAMBDA_TASK_ROOT is in sys.path.
 import logging
+from datetime import timedelta
+from typing import List
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from mangum import Mangum  # Import Mangum
+
+import crud
+import models
+import security
+from models import User
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-import crud
-import models
-import security
 
 # --- Authentication Setup ---
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -138,7 +139,7 @@ async def award_points_to_kid(
     kid_user = crud.get_user_by_username(award.kid_username)
     if not kid_user or kid_user.role != models.UserRole.KID:
         raise HTTPException(status_code=404, detail="Kid user not found or user is not a kid")
-    
+
     updated_kid_user = crud.update_user_points(username=award.kid_username, points_to_add=award.points)
     if not updated_kid_user:
         raise HTTPException(status_code=500, detail="Could not award points")

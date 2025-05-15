@@ -1,16 +1,16 @@
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-import logging
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 
 # Configuration
 SECRET_KEY = os.getenv("APP_SECRET_KEY")
