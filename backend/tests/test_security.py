@@ -86,7 +86,7 @@ def test_decode_invalid_token():
     # A more advanced test could try to decode a token signed with a different secret.
 
 
-def test_decode_expired_token(monkeypatch):
+def test_decode_expired_token():
     """
     Test that an expired token cannot be decoded.
     """

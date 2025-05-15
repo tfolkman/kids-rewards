@@ -91,7 +91,7 @@ def create_user(user_in: models.UserCreate) -> models.User:
     except ClientError as e:
         print(f"Error creating user {user_in.username}: {e}")
         # Consider raising a custom exception or re-raising
-        raise HTTPException(status_code=500, detail="Could not create user in database.")
+        raise HTTPException(status_code=500, detail="Could not create user in database.") from e
 
 
 def update_user_points(username: str, points_to_add: int) -> Optional[models.User]:
@@ -205,7 +205,7 @@ def create_store_item(item_in: models.StoreItemCreate) -> models.StoreItem:
         return models.StoreItem(**item_data)  # Construct from item_data
     except ClientError as e:
         print(f"Error creating store item {item_in.name}: {e}")
-        raise HTTPException(status_code=500, detail="Could not create store item in database.")
+        raise HTTPException(status_code=500, detail="Could not create store item in database.") from e
 
 
 def update_store_item(item_id: str, item_in: models.StoreItemCreate) -> Optional[models.StoreItem]:

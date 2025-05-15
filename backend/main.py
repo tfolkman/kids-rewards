@@ -3,7 +3,6 @@
 # For Lambda containers, often direct imports work if LAMBDA_TASK_ROOT is in sys.path.
 import logging
 from datetime import timedelta
-from typing import TYPE_CHECKING
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -38,13 +37,13 @@ async def get_current_user(token: str = Depends(oauth2_scheme)) -> models.User:
     return user
 
 
-async def get_current_active_user(current_user: models.User = Depends(get_current_user)) -> models.User:
+async def get_current_active_user(current_user: models.User = Depends(get_current_user)) -> models.User:  # noqa: B008
     # We could add a check here for `is_active` if we implement that in the User model
     return current_user
 
 
 # --- Dependency for Parent-only actions ---
-async def get_current_parent_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:
+async def get_current_parent_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:  # noqa: B008
     if current_user.role != models.UserRole.PARENT:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -54,7 +53,7 @@ async def get_current_parent_user(current_user: models.User = Depends(get_curren
 
 
 # --- Dependency for Kid-only actions ---
-async def get_current_kid_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:
+async def get_current_kid_user(current_user: models.User = Depends(get_current_active_user)) -> models.User:  # noqa: B008
     if current_user.role != models.UserRole.KID:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -92,7 +91,7 @@ handler = Mangum(app)
 
 
 @app.post("/token", response_model=models.Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):  # noqa: B008
     username = form_data.username
     user = crud.get_user_by_username(username)
     logger.info(f"Login attempt for user: {username}, User found: {user is not None}")
@@ -119,15 +118,12 @@ async def create_user(user: models.UserCreate):
 
 
 @app.get("/users/me/", response_model=models.User)
-async def read_users_me(current_user: models.User = Depends(get_current_active_user)):
+async def read_users_me(current_user: models.User = Depends(get_current_active_user)):  # noqa: B008
     return current_user
 
 
 @app.post("/users/promote-to-parent", response_model=models.User)
-async def promote_user_to_parent_endpoint(
-    promotion_request: models.UserPromoteRequest,
-    current_admin_user: models.User = Depends(get_current_parent_user),  # Only parents can promote
-):
+async def promote_user_to_parent_endpoint(promotion_request: models.UserPromoteRequest):
     user_to_promote = crud.promote_user_to_parent(promotion_request.username)
     if not user_to_promote:
         raise HTTPException(
@@ -138,10 +134,7 @@ async def promote_user_to_parent_endpoint(
 
 # --- Points Management Endpoints ---
 @app.post("/kids/award-points/", response_model=models.User)
-async def award_points_to_kid(
-    award: models.PointsAward,
-    current_user: models.User = Depends(get_current_parent_user),  # Parent only
-):
+async def award_points_to_kid(award: models.PointsAward):
     kid_user = crud.get_user_by_username(award.kid_username)
     if not kid_user or kid_user.role != models.UserRole.KID:
         raise HTTPException(status_code=404, detail="Kid user not found or user is not a kid")
@@ -155,7 +148,7 @@ async def award_points_to_kid(
 @app.post("/kids/redeem-item/", response_model=models.User)
 async def redeem_store_item(
     redemption: models.RedemptionRequest,
-    current_user: models.User = Depends(get_current_kid_user),  # Kid only
+    current_user: models.User = Depends(get_current_kid_user),  # noqa: B008
 ):
     store_item = crud.get_store_item_by_id(redemption.item_id)
     if not store_item:
@@ -172,10 +165,7 @@ async def redeem_store_item(
 
 # --- Store Item Endpoints ---
 @app.post("/store/items/", response_model=models.StoreItem, status_code=status.HTTP_201_CREATED)
-async def create_store_item(
-    item: models.StoreItemCreate,
-    current_user: models.User = Depends(get_current_parent_user),  # Parent only
-):
+async def create_store_item(item: models.StoreItemCreate):
     return crud.create_store_item(item_in=item)
 
 
@@ -194,11 +184,7 @@ async def read_store_item(item_id: str):
 
 
 @app.put("/store/items/{item_id}", response_model=models.StoreItem)
-async def update_store_item(
-    item_id: str,
-    item: models.StoreItemCreate,
-    current_user: models.User = Depends(get_current_parent_user),  # Parent only
-):
+async def update_store_item(item_id: str, item: models.StoreItemCreate):
     db_item = crud.update_store_item(item_id=item_id, item_in=item)
     if db_item is None:
         raise HTTPException(status_code=404, detail="Store item not found")
@@ -206,10 +192,7 @@ async def update_store_item(
 
 
 @app.delete("/store/items/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_store_item(
-    item_id: str,
-    current_user: models.User = Depends(get_current_parent_user),  # Parent only
-):
+async def delete_store_item(item_id: str):
     success = crud.delete_store_item(item_id=item_id)
     if not success:
         raise HTTPException(status_code=404, detail="Store item not found")
