@@ -67,5 +67,6 @@ jobs:
             --s3-bucket ${{ secrets.SAM_S3_BUCKET_NAME }} \ # GitHub Secret: Name of your SAM artifacts S3 bucket
             --s3-prefix ${{ env.SAM_STACK_NAME }}/sam-artifacts \
             --no-fail-on-empty-changeset \
+            --image-repositories KidsRewardsLambdaFunction=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
             --resolve-image-repos \
             --parameter-overrides AppImageUri=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
