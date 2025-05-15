@@ -102,5 +102,6 @@ export const awardPoints = (data: PointsAwardData) => apiClient.post<User>('/kid
 export const redeemItem = (data: RedemptionRequestData) => apiClient.post<User>('/kids/redeem-item/', data);
 
 export const helloWorld = () => apiClient.get<{ message: string }>('/hello');
+export const getLeaderboard = () => apiClient.get<User[]>('/leaderboard');
 
 export default apiClient;

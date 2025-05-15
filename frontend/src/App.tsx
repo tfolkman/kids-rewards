@@ -28,13 +28,14 @@ import {
     MantineTheme
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, IconLogout, IconSettings, IconAward, IconUserUp } from '@tabler/icons-react'; // Added IconUserUp
+import { IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers } from '@tabler/icons-react'; // Added IconUserUp and IconListNumbers
 import '@mantine/core/styles.css';
 import './App.css';
 import * as api from './services/api';
 import ManageStoreItems from './components/ManageStoreItems';
 import AwardPoints from './components/AwardPoints';
 import UserManagement from './components/UserManagement'; // Import UserManagement
+import LeaderboardPage from './pages/LeaderboardPage'; // Import the new page
 
 // --- Context for Auth ---
 interface AuthContextType {
@@ -217,9 +218,9 @@ const Dashboard = () => {
             <Title order={2} my="lg">Dashboard</Title>
             <Paper p="lg" shadow="xs" withBorder>
                 <Title order={3} c={theme.primaryColor}>Welcome, {currentUser.username}!</Title>
-                <Text>Role: <Badge color={currentUser.role === 'parent' ? 'pink' : 'green'}>{currentUser.role}</Badge></Text>
+                <Text component="span">Role: <Badge color={currentUser.role === 'parent' ? 'pink' : 'green'}>{currentUser.role}</Badge></Text>
                 {currentUser.role === 'kid' && (
-                    <Text mt="sm" size="lg">Your Points: <Badge variant="filled" size="xl" color="yellow">{currentUser.points ?? 0}</Badge></Text>
+                    <Text component="span" mt="sm" size="lg">Your Points: <Badge variant="filled" size="xl" color="yellow">{currentUser.points ?? 0}</Badge></Text>
                 )}
             </Paper>
 
@@ -375,6 +376,7 @@ const App: React.FC = () => {
     const navLinks = [
         { icon: IconHome, label: 'Dashboard', to: '/' },
         { icon: IconShoppingCart, label: 'Store', to: '/store' },
+        { icon: IconListNumbers, label: 'Leaderboard', to: '/leaderboard' },
     ];
 
     return (
@@ -447,6 +449,7 @@ const App: React.FC = () => {
                     <Route element={<ProtectedRoute />}>
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/store" element={<StorePage />} />
+                        <Route path="/leaderboard" element={<LeaderboardPage />} />
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>

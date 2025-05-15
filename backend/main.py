@@ -1,5 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, status
+from typing import List
 from fastapi.middleware.cors import CORSMiddleware
+from models import User
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from mangum import Mangum # Import Mangum
 from datetime import timedelta
@@ -57,10 +59,11 @@ app = FastAPI()
 
 # --- CORS Middleware ---
 origins = [
-    "http://localhost:3000", # React default dev port # Assuming this might still be used or for other services
+    "http://localhost:3000", # React default dev port
     "http://localhost:3001", # Frontend dev server port
-    "https://main.dd0mqanef4wnt.amplifyapp.com", # Your deployed Amplify frontend
-    # You might add other custom domains here later
+    "http://localhost:3000", # Backend server port
+    "https://main.dd0mqanef4wnt.amplifyapp.com", # Deployed Amplify frontend
+    # Add other domains here
 ]
 
 app.add_middleware(
@@ -193,6 +196,18 @@ async def delete_store_item(
 async def read_root():
     return {"message": "Kids Rewards API is running!"}
 
+@app.get("/leaderboard", response_model=List[User])
+async def get_leaderboard():
+    """Get all users sorted by points (highest to lowest)"""
+    users = crud.get_all_users()
+    # Sort users by points (descending), putting users with None points at the end
+    sorted_users = sorted(
+        users,
+        key=lambda u: u.points if u.points is not None else -1,
+        reverse=True
+    )
+    return sorted_users
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
@@ -202,3 +217,4 @@ async def hello_world():
     response = {"message": "Hello, world!"}
     # headers = {"Access-Control-Allow-Origin": "http://localhost:3001"} # Middleware will handle this
     return response # FastAPI will handle status and headers correctly with middleware
+
