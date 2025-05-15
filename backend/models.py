@@ -56,3 +56,28 @@ class RedemptionRequest(BaseModel):
 
 class UserPromoteRequest(BaseModel):
     username: str
+from datetime import datetime
+
+class PurchaseStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    COMPLETED = "completed" # Default for now, will change with approval system
+
+class PurchaseLogBase(BaseModel):
+    user_id: str
+    username: str
+    item_id: str
+    item_name: str
+    points_spent: int
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    status: PurchaseStatus = PurchaseStatus.PENDING
+
+class PurchaseLogCreate(PurchaseLogBase):
+    pass
+
+class PurchaseLog(PurchaseLogBase):
+    id: str # Or int, depending on DB
+
+    class Config:
+        from_attributes = True
