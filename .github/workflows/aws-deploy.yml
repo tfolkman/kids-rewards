@@ -2,7 +2,7 @@ name: Deploy Backend to AWS
 
 on:
   workflow_run:
-    workflows: ["ci-tests"]
+    workflows: ["CI Tests and Linting"]
     branches: [main]
     types:
       - completed
