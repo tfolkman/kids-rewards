@@ -111,7 +111,10 @@ The backend handles all the logic, like user logins and managing points.
         *   `local-env.json` provides environment variables to the running container.
         *   `--docker-network kidsrewards-network` connects your backend container to the same network as your database.
         ```bash
-        sam local start-api -t backend/template.yaml --env-vars local-env.json --docker-network kidsrewards-network
+        sam local start-api -t backend/template.yaml \
+            --env-vars local-env.json \
+            --docker-network kidsrewards-network \
+            --parameter-overrides "AppImageUri=kidsrewardslambdafunction:latest TableNamePrefix=local- LocalDynamoDBEndpoint=http://localhost:8000"
         ```
         SAM CLI will build the Docker image specified in your `backend/Dockerfile` if it hasn't been built yet or if code changes are detected. Your backend API should then be running, usually at `http://127.0.0.1:3000`.
     *   **Keep this terminal window open!** Your backend needs to keep running.

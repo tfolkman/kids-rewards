@@ -45,6 +45,10 @@ Resources:
       Policies: # Corrected indentation for the Policies key
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+    Metadata: 
+      Dockerfile: Dockerfile  
+      DockerContext: . 
+      DockerTag: latest       
   KidsRewardsTable: # New DynamoDB Table Resource
     Type: AWS::DynamoDB::Table
     Properties:
