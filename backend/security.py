@@ -2,6 +2,13 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
@@ -19,7 +26,9 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    verification_result = pwd_context.verify(plain_password, hashed_password)
+    logger.info(f"Password verification result: {verification_result}")
+    return verification_result
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)

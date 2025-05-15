@@ -66,6 +66,7 @@ Resources:
       ProvisionedThroughput: # Or use OnDemandThroughput
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
+      DeletionPolicy: Retain
 
   KidsRewardsStoreItemsTable: # New DynamoDB Table Resource for Store Items
     Type: AWS::DynamoDB::Table
@@ -80,6 +81,7 @@ Resources:
       ProvisionedThroughput: # Or use OnDemandThroughput
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
+      DeletionPolicy: Retain
 
 Conditions:
   IsLocalEnvironment: !Not [!Equals [!Ref LocalDynamoDBEndpoint, ""]] # Condition to check if local endpoint is provided

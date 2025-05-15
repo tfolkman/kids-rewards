@@ -9,6 +9,13 @@ from datetime import timedelta
 # Assuming main.py, crud.py, models.py, security.py are all in LAMBDA_TASK_ROOT (/var/task)
 # and __init__.py makes this directory a package.
 # For Lambda containers, often direct imports work if LAMBDA_TASK_ROOT is in sys.path.
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 import crud
 import models
 import security
@@ -83,8 +90,11 @@ handler = Mangum(app)
 
 @app.post("/token", response_model=models.Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = crud.get_user_by_username(form_data.username)
+    username = form_data.username
+    user = crud.get_user_by_username(username)
+    logger.info(f"Login attempt for user: {username}, User found: {user is not None}")
     if not user or not security.verify_password(form_data.password, user.hashed_password):
+        logger.warning(f"Login failed for user: {username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
