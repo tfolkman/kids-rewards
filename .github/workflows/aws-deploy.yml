@@ -71,4 +71,4 @@ jobs:
             --s3-prefix ${{ env.SAM_STACK_NAME }}/sam-artifacts \
             --no-fail-on-empty-changeset \
             --image-repositories KidsRewardsLambdaFunction=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
-            --parameter-overrides AppImageUri=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+            --parameter-overrides AppImageUri=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} AppSecret=${{ secrets.APP_SECRET }}

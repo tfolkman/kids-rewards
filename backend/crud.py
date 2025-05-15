@@ -53,8 +53,13 @@ def get_user_by_username(username: str) -> Optional[models.User]:
         return None
 
 def create_user(user_in: models.UserCreate) -> models.User:
+    if len(user_in.username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters long.")
+    if len(user_in.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+
     hashed_password = security.get_password_hash(user_in.password)
-    
+
     # DynamoDB doesn't have auto-incrementing IDs in the same way SQL does.
     # We use username as the primary key for users.
     # 'id' field in Pydantic model can be same as username or a separate UUID if preferred.

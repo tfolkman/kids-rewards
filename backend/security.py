@@ -11,6 +11,8 @@ if not SECRET_KEY:
     # For a Lambda, failing to start if the key isn't set is a safe default.
     # This ensures the application doesn't run with an insecure default key.
     raise ValueError("CRITICAL: APP_SECRET_KEY environment variable is not set. Application cannot start securely.")
+if len(SECRET_KEY) < 32:
+    raise ValueError("CRITICAL: APP_SECRET_KEY must be at least 32 characters long for security.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
