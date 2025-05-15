@@ -1,17 +1,25 @@
-from fastapi import FastAPI, Depends, HTTPException, status
-from typing import List
-from fastapi.middleware.cors import CORSMiddleware
-from models import User
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from mangum import Mangum # Import Mangum
-from datetime import timedelta
-
 # Assuming main.py, crud.py, models.py, security.py are all in LAMBDA_TASK_ROOT (/var/task)
 # and __init__.py makes this directory a package.
 # For Lambda containers, often direct imports work if LAMBDA_TASK_ROOT is in sys.path.
+import logging
+from datetime import timedelta
+from typing import List
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from mangum import Mangum  # Import Mangum
+
 import crud
 import models
 import security
+from models import User
+
+# Configure logging
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 # --- Authentication Setup ---
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -83,8 +91,11 @@ handler = Mangum(app)
 
 @app.post("/token", response_model=models.Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    user = crud.get_user_by_username(form_data.username)
+    username = form_data.username
+    user = crud.get_user_by_username(username)
+    logger.info(f"Login attempt for user: {username}, User found: {user is not None}")
     if not user or not security.verify_password(form_data.password, user.hashed_password):
+        logger.warning(f"Login failed for user: {username}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
@@ -128,7 +139,7 @@ async def award_points_to_kid(
     kid_user = crud.get_user_by_username(award.kid_username)
     if not kid_user or kid_user.role != models.UserRole.KID:
         raise HTTPException(status_code=404, detail="Kid user not found or user is not a kid")
-    
+
     updated_kid_user = crud.update_user_points(username=award.kid_username, points_to_add=award.points)
     if not updated_kid_user:
         raise HTTPException(status_code=500, detail="Could not award points")

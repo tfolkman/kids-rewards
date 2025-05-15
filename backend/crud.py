@@ -1,11 +1,11 @@
 import os
 import uuid
-from typing import Dict, List, Optional, Any
 from decimal import Decimal
+from typing import Any, List, Optional
 
 import boto3
-from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
+from fastapi import HTTPException
 
 import models
 import security
@@ -23,7 +23,7 @@ if DYNAMODB_ENDPOINT_OVERRIDE:
     dynamodb = boto3.resource('dynamodb', endpoint_url=DYNAMODB_ENDPOINT_OVERRIDE, region_name=AWS_REGION)
 else:
     dynamodb = boto3.resource('dynamodb', region_name=AWS_REGION)
-    
+
 # Table resources are now initialized after dynamodb client is configured
 users_table = dynamodb.Table(USERS_TABLE_NAME)
 store_items_table = dynamodb.Table(STORE_ITEMS_TABLE_NAME)
@@ -55,13 +55,18 @@ def get_user_by_username(username: str) -> Optional[models.User]:
         return None
 
 def create_user(user_in: models.UserCreate) -> models.User:
+    if len(user_in.username) < 3:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters long.")
+    if len(user_in.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters long.")
+
     hashed_password = security.get_password_hash(user_in.password)
-    
+
     # DynamoDB doesn't have auto-incrementing IDs in the same way SQL does.
     # We use username as the primary key for users.
     # 'id' field in Pydantic model can be same as username or a separate UUID if preferred.
     # For simplicity, let's assume 'id' in the model is the username for now.
-    
+
     user_data = {
         'id': user_in.username, # Using username as ID
         'username': user_in.username,
@@ -237,8 +242,7 @@ def delete_store_item(item_id: str) -> bool:
         print(f"Error deleting store item {item_id}: {e}")
         return False
 
-# Note: The initialize_store_data function is removed as data will be managed in DynamoDB directly.
-# You would typically add initial items via the API or AWS console/CLI after tables are created.
+
 
 # --- Import HTTPException for create_user and create_store_item ---
 # This should ideally be at the top of the file, but placing it here to avoid re-reading the whole file

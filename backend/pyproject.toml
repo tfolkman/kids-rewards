@@ -1,18 +1,7 @@
-[project]
-name = "backend"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.12"
-dependencies = [
-    "bcrypt==4.0.1",
-    "boto3>=1.38.13",
-    "fastapi>=0.115.12",
-    "mangum>=0.19.0",
-    "passlib[bcrypt]>=1.7.4",
-    "python-jose[cryptography]>=3.4.0",
-    "python-multipart>=0.0.20",
-    "uvicorn>=0.34.2",
-    "awslambdaric>=3.0.2",
-    "simplejson>=3.20.1",
-]
+[tool.ruff]
+line-length = 120
+select = ["E", "W", "F", "I", "C"]
+ignore = ["E501"]
+
+[tool.ruff.flake8-import-conventions]
+aliases = { boto3 = "boto" }

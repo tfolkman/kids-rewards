@@ -1,6 +1,8 @@
-from pydantic import BaseModel, Field
-from typing import List, Optional
 from enum import Enum
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
 
 class UserRole(str, Enum):
     PARENT = "parent"

@@ -13,15 +13,24 @@ Parameters:
     Type: String
     Description: Prefix for DynamoDB table names (e.g., dev-, staging-, prod-)
     Default: ''
+  AppImageUri:
+    Type: String
+    Description: The ECR URI of the Docker image for the Lambda function.
+  LocalDynamoDBEndpoint: # Moved from later in the file
+    Type: String
+    Description: Local DynamoDB endpoint (e.g., http://localhost:8000)
+    Default: "" # Default to empty string, indicating not a local environment
+  AppSecret:
+    Type: String
+    Description: The secret key for the application. Must be at least 32 characters long.
+    Default: ""
 
 Resources:
   KidsRewardsLambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
-      PackageType: Zip
-      CodeUri: .
-      Handler: main.handler # Assuming main.py has a handler function
-      Runtime: python3.12
+      PackageType: Image
+      ImageUri: !Ref AppImageUri
       Architectures:
         - x86_64
       Events:
@@ -36,8 +45,14 @@ Resources:
           DYNAMODB_ENDPOINT_OVERRIDE: !If [IsLocalEnvironment, !Ref LocalDynamoDBEndpoint, !Ref "AWS::NoValue"] # Use local endpoint if parameter is provided
           USERS_TABLE_NAME: !If [IsLocalEnvironment, "local-my-table", !Sub "${TableNamePrefix}my-table"]
           STORE_ITEMS_TABLE_NAME: !If [IsLocalEnvironment, "local-store-items-table", !Sub "${TableNamePrefix}store-items-table"]
-          APP_SECRET_KEY: "34d5f50294422a9e6caa9add0cc8c5c4ef6fb77c293ea0ee5049fb79a4bd422e" # Add this line
-
+          APP_SECRET_KEY: !Ref AppSecret # Add this line
+      Policies: # Corrected indentation for the Policies key
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+    Metadata: 
+      Dockerfile: Dockerfile  
+      DockerContext: . 
+      DockerTag: latest       
   KidsRewardsTable: # New DynamoDB Table Resource
     Type: AWS::DynamoDB::Table
     Properties:
@@ -51,6 +66,7 @@ Resources:
       ProvisionedThroughput: # Or use OnDemandThroughput
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
+    DeletionPolicy: Retain
 
   KidsRewardsStoreItemsTable: # New DynamoDB Table Resource for Store Items
     Type: AWS::DynamoDB::Table
@@ -65,15 +81,10 @@ Resources:
       ProvisionedThroughput: # Or use OnDemandThroughput
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
+    DeletionPolicy: Retain
 
 Conditions:
   IsLocalEnvironment: !Not [!Equals [!Ref LocalDynamoDBEndpoint, ""]] # Condition to check if local endpoint is provided
-
-Parameters:
-  LocalDynamoDBEndpoint:
-    Type: String
-    Description: Local DynamoDB endpoint (e.g., http://localhost:8000)
-    Default: "" # Default to empty string, indicating not a local environment
 
 Outputs:
   KidsRewardsApi:

@@ -1,0 +1,85 @@
+name: Deploy Backend to AWS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual triggering
+
+env:
+  AWS_REGION: us-west-2
+  ECR_REGISTRY: 533984982271.dkr.ecr.us-west-2.amazonaws.com
+  ECR_REPOSITORY: kids-rewards-backend
+  SAM_STACK_NAME: kids-rewards-backend-stack # Or your preferred stack name
+  SAM_TEMPLATE_FILE: backend/template.yaml
+  DOCKERFILE_PATH: backend/Dockerfile
+  DOCKER_BUILD_CONTEXT: backend
+
+jobs:
+  deploy_backend:
+    name: Build, Push to ECR, and Deploy SAM Stack
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # Required for AWS OIDC authentication
+      contents: read   # Required to checkout the repository
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }} # GitHub Secret: ARN of the IAM role
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image to ECR
+        id: build-image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ env.DOCKER_BUILD_CONTEXT }}
+          file: ${{ env.DOCKERFILE_PATH }}
+          platforms: linux/amd64
+          no-cache: true
+          provenance: false # Add this line to disable provenance attestations
+          push: true
+          tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.repositoryUrl }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+      - name: Setup SAM CLI
+        uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true # Ensures SAM CLI is installed
+
+      - name: Run Ruff linter
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -r backend/requirements.txt
+          ruff check --exit-zero backend
+          if [ $? -ne 0 ]; then
+            echo "Ruff found linting errors. Failing deployment."
+            exit 1
+          fi
+
+      - name: Deploy SAM application
+        run: |
+          sam deploy \
+            --template-file ${{ env.SAM_TEMPLATE_FILE }} \
+            --stack-name ${{ env.SAM_STACK_NAME }} \
+            --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+            --region ${{ env.AWS_REGION }} \
+            --s3-bucket ${{ secrets.SAM_S3_BUCKET_NAME }} \
+            --s3-prefix ${{ env.SAM_STACK_NAME }}/sam-artifacts \
+            --no-fail-on-empty-changeset \
+            --image-repositories KidsRewardsLambdaFunction=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
+            --parameter-overrides AppImageUri=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} AppSecret=${{ secrets.APP_SECRET_KEY }}
