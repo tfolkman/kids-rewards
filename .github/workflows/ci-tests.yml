@@ -3,8 +3,14 @@ name: CI Tests and Linting
 on:
   push:
     branches: [ "main", "feature/*" ] # Adjust branches as needed
+    paths:
+        - "backend/**"
+        - "frontend/**"
   pull_request:
     branches: [ "main", "feature/*" ] # Adjust branches as needed
+    paths:
+        - "backend/**"
+        - "frontend/**"
 
 jobs:
   backend-checks:
