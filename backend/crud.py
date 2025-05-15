@@ -137,6 +137,22 @@ def promote_user_to_parent(username: str) -> Optional[models.User]:
         print(f"Error promoting user {username} to parent: {e}")
         return None
 
+def get_all_users() -> List[models.User]:
+    try:
+        response = users_table.scan()
+        items = response.get('Items', [])
+        # Add pagination handling if the table grows large
+        while 'LastEvaluatedKey' in response:
+            response = users_table.scan(ExclusiveStartKey=response['LastEvaluatedKey'])
+            items.extend(response.get('Items', []))
+        print(f"Raw data from DynamoDB: {items}")
+        replaced_items = [replace_decimals(item) for item in items]
+        print(f"Data after replace_decimals: {replaced_items}")
+        return [models.User(**item) for item in replaced_items]
+    except ClientError as e:
+        print(f"Error scanning users: {e}")
+        return []
+
 # --- Store Item CRUD ---
 def get_store_items() -> List[models.StoreItem]:
     try:
