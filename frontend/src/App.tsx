@@ -1,5 +1,5 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link as RouterLink, Navigate, Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Link as RouterLink, Navigate, Outlet, useNavigate, useLocation } from 'react-router';
 import {
     MantineProvider,
     createTheme,

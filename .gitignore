@@ -54,3 +54,6 @@ frontend/build/
 # Environment-specific files
 local-env.json
 .aws-sam/build.toml
+.env
+.coverage
+coverage.xml

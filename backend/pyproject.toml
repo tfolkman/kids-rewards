@@ -3,5 +3,35 @@ line-length = 120
 select = ["E", "W", "F", "I", "C"]
 ignore = ["E501"]
 
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "lf"
+
+[tool.ruff.lint]
+# Enable Pyflakes, Pycodestyle, isort
+select = ["E", "W", "F", "I", "C", "UP", "B", "A", "SIM", "TID", "ARG", "RUF"]
+ignore = [
+    "E501", # line too long, handled by formatter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend"]
+
 [tool.ruff.flake8-import-conventions]
 aliases = { boto3 = "boto" }
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+addopts = "-ra -q --cov=backend --cov-report=html --cov-report=xml"
+testpaths = [
+    "tests",
+]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+# Filter out warnings from dependencies if necessary
+# filterwarnings = [
+# "ignore::DeprecationWarning:pydantic.*:",
+# ]
