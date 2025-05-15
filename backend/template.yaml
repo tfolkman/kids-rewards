@@ -42,11 +42,21 @@ Resources:
           USERS_TABLE_NAME: !If [IsLocalEnvironment, "local-my-table", !Sub "${TableNamePrefix}my-table"]
           STORE_ITEMS_TABLE_NAME: !If [IsLocalEnvironment, "local-store-items-table", !Sub "${TableNamePrefix}store-items-table"]
           APP_SECRET_KEY: "34d5f50294422a9e6caa9add0cc8c5c4ef6fb77c293ea0ee5049fb79a4bd422e" # Add this line
-    Policies:
-       - DynamoDBCrudPolicy:
-           TableName: !If [IsLocalEnvironment, "local-my-table", !Sub "${TableNamePrefix}my-table"]
-       - DynamoDBCrudPolicy:
-           TableName: !If [IsLocalEnvironment, "local-store-items-table", !Sub "${TableNamePrefix}store-items-table"]
+      Policies: # Corrected indentation for the Policies key
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole # Added basic execution role
+        - PolicyName: DynamoDBFullAccessKidsRewards
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
+                  - dynamodb:Query
+                Resource: "*" # Grants access to all DynamoDB tables in the account/region
   KidsRewardsTable: # New DynamoDB Table Resource
     Type: AWS::DynamoDB::Table
     Properties:
