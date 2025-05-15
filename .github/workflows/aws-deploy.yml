@@ -46,6 +46,7 @@ jobs:
         with:
           context: ${{ env.DOCKER_BUILD_CONTEXT }}
           file: ${{ env.DOCKERFILE_PATH }}
+          platforms: linux/amd64 # Add this line to specify the platform
           push: true
           tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
           labels: |
