@@ -43,9 +43,7 @@ Resources:
           STORE_ITEMS_TABLE_NAME: !If [IsLocalEnvironment, "local-store-items-table", !Sub "${TableNamePrefix}store-items-table"]
           APP_SECRET_KEY: "34d5f50294422a9e6caa9add0cc8c5c4ef6fb77c293ea0ee5049fb79a4bd422e" # Add this line
       Policies: # Corrected indentation for the Policies key
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole # Added basic execution role
-        - PolicyName: DynamoDBFullAccessKidsRewards
-          PolicyDocument:
+        - IAMPolicyDocument: # Temporarily removed AWSLambdaBasicExecutionRole for debugging
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
@@ -56,7 +54,7 @@ Resources:
                   - dynamodb:DeleteItem
                   - dynamodb:Scan
                   - dynamodb:Query
-                Resource: "*" # Grants access to all DynamoDB tables in the account/region
+                Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/*" # Grants access to all tables in the account/region
   KidsRewardsTable: # New DynamoDB Table Resource
     Type: AWS::DynamoDB::Table
     Properties:
