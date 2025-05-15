@@ -47,7 +47,8 @@ jobs:
           context: ${{ env.DOCKER_BUILD_CONTEXT }}
           file: ${{ env.DOCKERFILE_PATH }}
           platforms: linux/amd64
-          no-cache: true # Add this line to disable build cache
+          no-cache: true
+          provenance: false # Add this line to disable provenance attestations
           push: true
           tags: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }}
           labels: |
