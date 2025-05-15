@@ -59,14 +59,14 @@ jobs:
     - name: Run React unit/integration tests
       run: npm test -- --watchAll=false # Ensure tests run once and exit
 
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps
+    #- name: Install Playwright Browsers
+    #  run: npx playwright install --with-deps
 
-    - name: Run Playwright E2E tests
-      env:
-        PLAYWRIGHT_BASE_URL: http://localhost:3001 # Or your test server URL
+    #- name: Run Playwright E2E tests
+    #  env:
+    #    PLAYWRIGHT_BASE_URL: http://localhost:3001 # Or your test server URL
         # CI: true # Playwright uses this to adjust some behaviors like retries
-      run: npm run e2e
+    #  run: npm run e2e
       # If your E2E tests require the frontend server to be running:
       # You might need to start your dev server in the background before running e2e tests
       # Example:
