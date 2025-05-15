@@ -1,6 +1,6 @@
 # Kids Rewards Project
 
-Welcome to the Kids Rewards project! This guide will help you understand how to set up and work with the project in different environments: local development, staging, and production.
+Welcome to the Kids Rewards project! This guide will help you understand how to set up and work with the project in different environments: local development and production.
 
 ## 🚀 Getting Started: Local Development
 
@@ -10,7 +10,7 @@ This section explains how to run the backend (the "brain" of the app) and the fr
 
 Before you start, make sure you have these tools installed on your machine:
 
-*   **Docker Desktop:** We use this to run a local version of our database (DynamoDB). Think of it as a mini-server for our data that runs on your computer.
+*   **Docker Desktop:** We use this to run a local version of our database (DynamoDB) and also to build and run our backend application locally via SAM CLI.
 *   **Python:** The backend is written in Python (we're using version 3.12).
 *   **pip:** Python's package installer (usually comes with Python).
 *   **Node.js and npm:** Node.js is a JavaScript runtime, and npm is its package manager. We need these for the frontend. (npm usually comes with Node.js).
@@ -50,26 +50,28 @@ The backend handles all the logic, like user logins and managing points.
     Now that the database is running, we need to create the "tables" inside it where our data will live. We'll use the AWS CLI for this.
 
     *   Open a **new** terminal window.
-    *   **Create the `KidsRewardsUsers` table:**
+    *   **Create the `KidsRewardsUsers` table (or your configured local table name):**
+        Refer to your `backend/template.yaml` and `local-env.json` for the exact local table names if they differ from the example. Assuming `local-my-table` for users:
         ```bash
         aws dynamodb create-table \
-            --table-name KidsRewardsUsers \
+            --table-name local-my-table \
             --attribute-definitions AttributeName=username,AttributeType=S \
             --key-schema AttributeName=username,KeyType=HASH \
             --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
             --endpoint-url http://localhost:8000
         ```
-    *   **Create the `KidsRewardsStoreItems` table:**
+    *   **Create the `KidsRewardsStoreItems` table (or your configured local table name):**
+        Assuming `local-store-items-table` for store items:
         ```bash
         aws dynamodb create-table \
-            --table-name KidsRewardsStoreItems \
+            --table-name local-store-items-table \
             --attribute-definitions AttributeName=id,AttributeType=S \
             --key-schema AttributeName=id,KeyType=HASH \
             --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
             --endpoint-url http://localhost:8000
         ```
         *   `--endpoint-url http://localhost:8000` is very important! It tells the AWS CLI to talk to your *local* database, not the real one in the cloud.
-        *   If you ever need to start fresh, you can delete these tables with `aws dynamodb delete-table --table-name KidsRewardsUsers --endpoint-url http://localhost:8000` (and similarly for `KidsRewardsStoreItems`) and then run the `create-table` commands again.
+        *   If you ever need to start fresh, you can delete these tables with `aws dynamodb delete-table --table-name local-my-table --endpoint-url http://localhost:8000` (and similarly for `local-store-items-table`) and then run the `create-table` commands again.
 
 3.  **Add Starting Data to Your Tables (Seeding):**
     It's helpful to have some sample users and items in the database when you're developing. We have a script for this.
@@ -87,30 +89,31 @@ The backend handles all the logic, like user logins and managing points.
         # Install required packages (only once, or when requirements.txt changes)
         pip install -r backend/requirements.txt
         ```
-    *   **Run the Seeding Script:** This command tells Python where to find your project's code (`PYTHONPATH=.`) and which database to talk to.
+    *   **Run the Seeding Script:** This command tells Python where to find your project's code (`PYTHONPATH=.`) and which database to talk to. Adjust table names if your local setup uses different ones.
         ```bash
-        PYTHONPATH=. DYNAMODB_ENDPOINT_OVERRIDE=http://localhost:8000 python scripts/seed_dynamodb.py --environment local --users-table KidsRewardsUsers --store-items-table KidsRewardsStoreItems
+        PYTHONPATH=. DYNAMODB_ENDPOINT_OVERRIDE=http://localhost:8000 python scripts/seed_dynamodb.py --environment local --users-table local-my-table --store-items-table local-store-items-table
         ```
         This will add users like "testparent" and "testkid" to your local database.
 
 4.  **Prepare and Run the Backend Application (SAM Local):**
-    Now we'll run the actual backend code using AWS SAM CLI.
+    Now we'll run the actual backend code using AWS SAM CLI. Since our Lambda is packaged as a Docker image, SAM CLI will build this image locally.
 
     *   Open a **new** terminal window (or use the one where you activated the Python virtual environment). Make sure you're in the main `kids_rewards` project directory.
-    *   **Build the SAM Application:** This step packages your backend code.
+    *   **Build the SAM Application (Optional but good practice):** While `sam local start-api` can build the image, running `sam build` first can sometimes help catch template or configuration issues earlier.
         ```bash
         sam build -t backend/template.yaml
         ```
     *   **Set up Local Environment File:** Your backend needs a special file called `local-env.json` to know how to connect to your local database and other settings. We provide an example file called `local-env.example.json`.
         *   In your project's main folder (`kids_rewards`), make a copy of `local-env.example.json` and name the copy `local-env.json`.
-        *   You usually don't need to change anything in `local-env.json` for the default local setup.
-    *   **Start the Local API:** This command runs your backend. It uses:
-        *   `local-env.json`: The file you just created, which tells your local backend important settings.
-        *   `--docker-network kidsrewards-network`: Connects your backend (which also runs in a Docker container via SAM) to the same network as your database.
+        *   Ensure the table names in `local-env.json` match what you created locally (e.g., `local-my-table`, `local-store-items-table`).
+    *   **Start the Local API:** This command runs your backend.
+        *   It uses your `backend/template.yaml` to understand your function configuration (including the Dockerfile location).
+        *   `local-env.json` provides environment variables to the running container.
+        *   `--docker-network kidsrewards-network` connects your backend container to the same network as your database.
         ```bash
-        sam local start-api -t .aws-sam/build/template.yaml --env-vars local-env.json --docker-network kidsrewards-network
+        sam local start-api -t backend/template.yaml --env-vars local-env.json --docker-network kidsrewards-network
         ```
-        Your backend API should now be running, usually at `http://127.0.0.1:3000`.
+        SAM CLI will build the Docker image specified in your `backend/Dockerfile` if it hasn't been built yet or if code changes are detected. Your backend API should then be running, usually at `http://127.0.0.1:3000`.
     *   **Keep this terminal window open!** Your backend needs to keep running.
 
 ### Setting up the Local Frontend (The User Interface)
@@ -141,7 +144,7 @@ The frontend is what you see in your web browser. It's a React application.
 
 Now you should have:
 1.  DynamoDB Local (database) running in a Docker container.
-2.  Your backend API running via `sam local start-api`.
+2.  Your backend API running via `sam local start-api` (inside a Docker container).
 3.  Your frontend React app running via `npm start`.
 
 You can open `http://localhost:3001` in your browser and start using the app!
@@ -154,60 +157,58 @@ You can open `http://localhost:3001` in your browser and start using the app!
     *   Username: `testkid`
     *   Password: `password123`
 
-If you make changes to the backend Python code, `sam local start-api` should often pick them up automatically. If not, you might need to stop it (Ctrl+C) and re-run `sam build` and then `sam local start-api`.
+If you make changes to the backend Python code (inside the `backend` directory), you'll need to stop `sam local start-api` (Ctrl+C) and restart it. SAM will then rebuild your Docker image with the changes.
 If you make changes to the frontend React code, `npm start` will usually update your browser automatically.
 
 ---
-*(The rest of your README.md for Staging and Production can follow here)*
----
 
-## 🌍 Staging Environment
+## 🚀 Deployment to AWS (Production)
 
-The staging environment is an isolated environment created automatically for each feature branch. This allows you to test your changes in an environment that is very similar to production before merging your code.
+The production environment is where the live version of the application runs.
 
 ### How it Works
 
-We use **GitHub Actions** and **AWS Amplify** to automate the deployment to staging:
+We use **GitHub Actions** to automate production deployments:
 
-1.  **GitHub Actions Workflow:** When you push code to a branch that starts with `feat/` (e.g., `feat/new-feature`) or open a Pull Request targeting `main` or `develop`, a GitHub Actions workflow (`.github/workflows/staging-deploy.yml`) is triggered.
-2.  **Backend Deployment:** This workflow uses AWS SAM CLI to build and deploy your backend code to a new, temporary AWS CloudFormation stack. The stack name and DynamoDB table names are dynamically generated based on your branch name.
-3.  **Backend Seeding:** After the backend is deployed, the workflow runs the `scripts/seed_dynamodb.py` script to populate the staging database with test data.
-4.  **Frontend Deployment (Amplify Previews):** AWS Amplify is configured to automatically detect new branches and deploy the frontend code for those branches to a unique preview URL.
-5.  **Connecting Frontend and Backend:** The Amplify-deployed frontend needs to know the URL of the dynamically deployed staging backend. This requires an additional step in the GitHub Actions workflow to fetch the backend URL after deployment and update an environment variable in the Amplify preview environment. **(Note: This step needs to be fully implemented in the workflow.)**
+1.  **Trigger:** The workflow defined in `.github/workflows/aws-deploy.yml` is triggered automatically when code is pushed or merged into the `main` branch. It can also be triggered manually from the GitHub Actions tab.
+2.  **Authentication:** The workflow uses AWS OIDC (OpenID Connect) to securely authenticate with your AWS account by assuming a pre-configured IAM Role. This avoids storing long-lived AWS credentials as GitHub secrets.
+3.  **Backend Deployment:**
+    *   The workflow checks out the code.
+    *   It logs into Amazon ECR (Elastic Container Registry).
+    *   It builds the Docker image for the backend application (from `backend/Dockerfile`).
+    *   It pushes the tagged Docker image to your ECR repository.
+    *   It then uses AWS SAM CLI (`sam deploy`) to deploy your backend stack. This command references your `backend/template.yaml`.
+    *   The `sam deploy` command updates your AWS Lambda function to use the new Docker image from ECR and applies any changes to other resources defined in the template (like DynamoDB tables).
+4.  **Frontend Deployment (AWS Amplify):**
+    *   The production frontend is hosted on AWS Amplify.
+    *   Amplify is configured to watch the `main` branch. When changes are pushed to `main`, Amplify automatically builds and deploys the latest version of the frontend.
+    *   Ensure your Amplify app's build settings are correct and that it's configured to point to your production API Gateway endpoint.
 
-### Using the Staging Environment
+### Prerequisites for Production Deployment
 
-1.  **Create a Feature Branch:** Create a new branch for your work, starting with `feat/` (e.g., `git checkout -b feat/my-awesome-feature`).
-2.  **Push Your Changes:** Push your code changes to this branch (`git push origin feat/my-awesome-feature`).
-3.  **Monitor the Workflow:** Go to the "Actions" tab in your GitHub repository to see the "Deploy Staging Backend" workflow running.
-4.  **Access the Staging Environment:** Once the workflow completes successfully, you will get a unique URL for your staging environment (both frontend and backend API). You can find these URLs in the workflow run logs or potentially in a comment on your Pull Request (if configured).
-5.  **Test Your Changes:** Test your new features and changes in this isolated staging environment.
-6.  **Teardown:** When you close the Pull Request associated with your feature branch or delete the `feat/` branch, the `.github/workflows/staging-teardown.yml` workflow will automatically run to delete the temporary backend CloudFormation stack, cleaning up the AWS resources.
+Before the GitHub Actions workflow can successfully deploy to production, you must have the following configured:
 
-## 🚀 Production Environment
-
-The production environment is where the live version of the application runs. Deployments to production should be done carefully and typically require approval.
-
-### How it Works
-
-We will use a GitHub Actions workflow (`.github/workflows/prod-deploy.yml`) to automate production deployments:
-
-1.  **Trigger:** This workflow will be triggered when code is merged into the `main` branch (our designated production branch).
-2.  **Approval:** Before the deployment to production starts, the workflow will require a manual approval step. This ensures that someone reviews and approves the changes before they go live.
-3.  **Backend Deployment:** Once approved, the workflow will build and deploy the backend code to the production AWS environment using AWS SAM CLI. This will update the main CloudFormation stack and associated resources (like the production DynamoDB tables).
-4.  **Frontend Deployment:** The production frontend deployment process will depend on how it's hosted (e.g., Amplify, S3/CloudFront). You will need to ensure the production frontend is updated after a successful backend deployment and is configured to point to the production backend API Gateway URL. **(Note: The exact steps for production frontend deployment and connecting it to the backend need to be defined based on your setup.)**
+1.  **AWS IAM OIDC Role:**
+    *   An IAM role must be created in your AWS account that trusts GitHub's OIDC provider.
+    *   This role needs permissions to interact with ECR (push images), CloudFormation (deploy SAM stacks), S3 (for SAM artifacts), Lambda (update functions), DynamoDB (manage tables), and IAM (if your SAM template creates roles).
+    *   The trust policy of this IAM role must be configured to allow your specific GitHub repository (e.g., `YOUR_GITHUB_USERNAME/YOUR_REPOSITORY_NAME`) and the `main` branch to assume it.
+2.  **GitHub Secrets:**
+    *   Navigate to your GitHub repository's "Settings" > "Secrets and variables" > "Actions".
+    *   Add the following repository secrets:
+        *   `AWS_ROLE_TO_ASSUME`: The ARN (Amazon Resource Name) of the IAM OIDC role created above (e.g., `arn:aws:iam::YOUR_AWS_ACCOUNT_ID:role/GitHubActionsDeployRole`).
+        *   `SAM_S3_BUCKET_NAME`: The name of an S3 bucket in your AWS account (e.g., `us-west-2` region) where SAM CLI will store deployment artifacts. Create this bucket if it doesn't exist.
+3.  **ECR Repository:**
+    *   An ECR repository must exist with the name specified in the workflow (`kids-rewards-backend` by default, under registry `533984982271.dkr.ecr.us-west-2.amazonaws.com`). The workflow will push images here.
 
 ### Deploying to Production
 
-1.  **Merge to Main:** Ensure your feature branch has been thoroughly tested in the staging environment and is ready to go live. Merge your feature branch into the `main` branch.
-2.  **Request Approval:** The "Deploy Production Backend" GitHub Actions workflow will start. It will pause and wait for approval.
-3.  **Approve Deployment:** A designated approver (e.g., a parent or lead developer) will need to go to the "Actions" tab in GitHub, find the production deployment workflow run, and approve the deployment.
-4.  **Monitor Deployment:** Once approved, the workflow will proceed with deploying the backend to production. Monitor the workflow run logs to ensure the deployment is successful.
-5.  **Verify Production:** After the workflow completes, verify that the changes are live in the production environment.
+1.  **Merge to Main:** Ensure your feature branch has been thoroughly tested (locally or via other means) and is ready to go live. Merge your changes into the `main` branch.
+2.  **Monitor Deployment:** The GitHub Actions workflow "Deploy Backend to AWS" will automatically start. You can monitor its progress in the "Actions" tab of your GitHub repository.
+3.  **Verify Production:** After the workflow completes successfully for both backend (GitHub Action) and frontend (Amplify), verify that the changes are live and functioning correctly in the production environment.
 
-## Next Steps
+## Next Steps & Important Notes
 
-*   Implement the step in `.github/workflows/staging-deploy.yml` to fetch the staging backend API Gateway URL and update the Amplify preview environment variable.
-*   Define and implement the production frontend deployment process and how it connects to the production backend.
-*   Replace `YOUR_SAM_DEPLOYMENT_BUCKET_NAME` in `.github/workflows/staging-deploy.yml` and `.github/workflows/prod-deploy.yml` with the actual name of your S3 bucket for SAM deployment artifacts.
-*   Add AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION) as secrets in your GitHub repository settings.
+*   **Complete AWS Setup:** Ensure the IAM OIDC Role, GitHub Secrets (`AWS_ROLE_TO_ASSUME`, `SAM_S3_BUCKET_NAME`), and ECR repository are correctly set up as described in the "Prerequisites for Production Deployment" section.
+*   **SAM S3 Bucket:** The `SAM_S3_BUCKET_NAME` secret should point to an S3 bucket you own, used by `sam deploy` for packaging.
+*   **Amplify Configuration:** Double-check your AWS Amplify settings to ensure it's correctly building from the `main` branch and that its environment variables point to the production API Gateway endpoint. The API Gateway endpoint URL can be found in the outputs of your SAM stack after a successful deployment.
+*   **Local Table Names:** The local setup instructions for creating DynamoDB tables and seeding use example names like `local-my-table`. Verify these against your `backend/template.yaml` (Conditions and Mappings for local environment) and `local-env.json` to ensure consistency.

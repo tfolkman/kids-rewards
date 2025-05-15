@@ -13,15 +13,20 @@ Parameters:
     Type: String
     Description: Prefix for DynamoDB table names (e.g., dev-, staging-, prod-)
     Default: ''
+  AppImageUri:
+    Type: String
+    Description: The ECR URI of the Docker image for the Lambda function.
+  LocalDynamoDBEndpoint: # Moved from later in the file
+    Type: String
+    Description: Local DynamoDB endpoint (e.g., http://localhost:8000)
+    Default: "" # Default to empty string, indicating not a local environment
 
 Resources:
   KidsRewardsLambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
-      PackageType: Zip
-      CodeUri: .
-      Handler: main.handler # Assuming main.py has a handler function
-      Runtime: python3.12
+      PackageType: Image
+      ImageUri: !Ref AppImageUri
       Architectures:
         - x86_64
       Events:
@@ -68,12 +73,6 @@ Resources:
 
 Conditions:
   IsLocalEnvironment: !Not [!Equals [!Ref LocalDynamoDBEndpoint, ""]] # Condition to check if local endpoint is provided
-
-Parameters:
-  LocalDynamoDBEndpoint:
-    Type: String
-    Description: Local DynamoDB endpoint (e.g., http://localhost:8000)
-    Default: "" # Default to empty string, indicating not a local environment
 
 Outputs:
   KidsRewardsApi:
