@@ -36,6 +36,7 @@ import ManageStoreItems from './components/ManageStoreItems';
 import AwardPoints from './components/AwardPoints';
 import UserManagement from './components/UserManagement'; // Import UserManagement
 import LeaderboardPage from './pages/LeaderboardPage'; // Import the new page
+import SearchBar from './components/SearchBar';
 
 // --- Context for Auth ---
 interface AuthContextType {
@@ -262,12 +263,14 @@ const StorePage = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const theme = useMantineTheme();
+    const [searchResults, setSearchResults] = useState<api.StoreItem[]>([]);
 
     useEffect(() => {
         setLoading(true);
         api.getStoreItems()
             .then(response => {
-                setItems(response.data);
+                const sortedItems = response.data.sort((a, b) => a.points_cost - b.points_cost);
+                setItems(sortedItems);
                 setError(null);
             })
             .catch(err => {
@@ -276,6 +279,14 @@ const StorePage = () => {
             })
             .finally(() => setLoading(false));
     }, []);
+
+    const handleSearch = (results: api.StoreItem[]) => {
+        setSearchResults(results);
+    };
+    
+    useEffect(() => {
+        setSearchResults(items);
+    }, [items]);
 
     const handleRedeem = async (itemId: string, cost: number) => {
         if (!currentUser || currentUser.role !== 'kid' || (currentUser.points ?? 0) < cost) {
@@ -308,11 +319,12 @@ const StorePage = () => {
     return (
         <Container>
             <Title order={2} my="lg">Rewards Store</Title>
-            {items.length === 0 ? (
-                <Text>No items in the store yet. Ask a parent to add some!</Text>
+            <SearchBar items={items} onSearch={handleSearch} />
+            {searchResults.length === 0 ? (
+                <Text>No items found.</Text>
             ) : (
                 <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="lg">
-                    {items.map(item => (
+                    {searchResults.map(item => (
                         <Card shadow="sm" padding="lg" radius="md" withBorder key={item.id}>
                             <Stack justify="space-between" style={{ height: '100%' }}>
                                 <Box>
