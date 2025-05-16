@@ -7,7 +7,8 @@ import boto3
 from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
-from . import models, security
+import models
+import security
 
 # --- DynamoDB Setup ---
 DYNAMODB_ENDPOINT_OVERRIDE = os.getenv("DYNAMODB_ENDPOINT_OVERRIDE")  # For local testing e.g. 'http://localhost:8000'
