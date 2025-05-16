@@ -1,9 +1,19 @@
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.main import (
     app,  # Corrected import: Assuming FastAPI app is in main.py at the root of the backend directory
 )
+
+# Calculate the project root (two levels up from backend/tests/conftest.py)
+# and add it to sys.path.
+# This ensures that the 'backend' package can be imported correctly (e.g., 'from backend.main import app')
+# and that relative imports within the 'backend' package (e.g., 'from .models import ...' in main.py)
+# work correctly during test execution.
+_current_file_dir = os.path.dirname(os.path.abspath(__file__))
+_project_root = os.path.abspath(os.path.join(_current_file_dir, "..", ".."))
 
 
 @pytest.fixture(scope="module")

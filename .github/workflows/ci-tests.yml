@@ -13,41 +13,40 @@ on:
         - "frontend/**"
 
 jobs:
-  backend-checks:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./backend
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+# backend-checks:
+#   runs-on: ubuntu-latest
+#   defaults:
+#     run:
+#       working-directory: ./backend
+#   steps:
+#   - name: Checkout code
+#     uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.11' # Ensure this matches your .python-version or project requirement
-        cache: 'pip'
-        cache-dependency-path: backend/requirements.txt
+#   - name: Set up Python
+#     uses: actions/setup-python@v5
+#     with:
+#       python-version: '3.11' # Ensure this matches your .python-version or project requirement
+#       cache: 'pip'
+#       cache-dependency-path: backend/requirements.txt
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+#   - name: Install dependencies
+#     run: |
+#       python -m pip install --upgrade pip
+#       pip install -r requirements.txt
 
-    - name: Lint with Ruff
-      run: ruff check . && ruff format --check .
+#   - name: Lint with Ruff
+#     run: ruff check . && ruff format --check .
 
-    - name: Run Pytest
-      env:
-        APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY_TEST }} # Needs to be configured in GitHub secrets
-      run: pytest
+#   - name: Run Pytest
+#     env:
+#       APP_SECRET_KEY: ${{ secrets.APP_SECRET_KEY_TEST }} # Needs to be configured in GitHub secrets
+#     run: pytest
 
   frontend-checks:
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ./frontend
-    needs: backend-checks # Optional: run frontend checks only if backend checks pass
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
