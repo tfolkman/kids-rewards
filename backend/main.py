@@ -73,7 +73,9 @@ origins = [
     "http://localhost:3000",  # React default dev port
     "http://localhost:3001",  # Frontend dev server port
     "http://localhost:3000",  # Backend server port
-    "https://main.dd0mqanef4wnt.amplifyapp.com",  # Deployed Amplify frontend
+    "https://main.dd0mqanef4wnt.amplifyapp.com",
+    "https://monkeypoints.shop",
+    "https://www.monkeypoints.shop",  # Deployed Amplify frontend
     # Add other domains here
 ]
 
