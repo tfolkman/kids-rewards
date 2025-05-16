@@ -267,7 +267,8 @@ const StorePage = () => {
         setLoading(true);
         api.getStoreItems()
             .then(response => {
-                setItems(response.data);
+                const sortedItems = response.data.sort((a, b) => a.points_cost - b.points_cost);
+                setItems(sortedItems);
                 setError(null);
             })
             .catch(err => {
