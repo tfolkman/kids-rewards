@@ -98,3 +98,68 @@ class PurchaseLog(PurchaseLogBase):
 
     class Config:
         from_attributes = True
+
+
+class ChoreStatus(str, Enum):
+    AVAILABLE = "available"  # Chore is available for kids to do
+    PENDING_APPROVAL = "pending_approval"  # Kid submitted chore, awaiting parent approval
+    APPROVED = "approved"  # Parent approved, points awarded
+    REJECTED = "rejected"  # Parent rejected
+    # COMPLETED might be redundant if APPROVED means completed and awarded.
+    # ARCHIVED could be for chores no longer active but kept for history.
+
+
+class ChoreBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    points_value: int = Field(gt=0)
+    # created_by_parent_id: str # This will be derived from the authenticated user
+
+
+class ChoreCreate(ChoreBase):
+    pass
+
+
+class Chore(ChoreBase):
+    id: str
+    created_by_parent_id: str  # User ID of the parent who created it
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+    is_active: bool = True  # To allow deactivating chores instead of hard delete
+
+    class Config:
+        from_attributes = True
+
+
+class ChoreSubmission(BaseModel):
+    chore_id: str
+    # kid_id will be from the authenticated user
+
+
+class ChoreApprovalRequest(BaseModel):
+    chore_log_id: str
+    approve: bool  # True to approve, False to reject
+    # parent_id will be from the authenticated user
+
+
+class ChoreLogBase(BaseModel):
+    chore_id: str
+    chore_name: str  # Denormalized for easier display
+    kid_id: str
+    kid_username: str  # Denormalized
+    points_value: int  # Points for this specific instance of chore completion
+    status: ChoreStatus
+    submitted_at: datetime = Field(default_factory=datetime.utcnow)
+    reviewed_by_parent_id: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ChoreLogCreate(ChoreLogBase):
+    pass
+
+
+class ChoreLog(ChoreLogBase):
+    id: str

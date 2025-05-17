@@ -28,8 +28,10 @@ import {
     MantineTheme
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, IconReceipt, IconHourglassHigh } from '@tabler/icons-react'; // Added IconUserUp, IconListNumbers, IconReceipt, and IconHourglassHigh
+import { Notifications } from '@mantine/notifications'; // Import Notifications
+import { IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, IconReceipt, IconHourglassHigh, IconClipboardList, IconHistory, IconChecklist } from '@tabler/icons-react'; // Added chore icons
 import '@mantine/core/styles.css';
+import '@mantine/notifications/styles.css'; // Import notifications styles
 import './App.css';
 import * as api from './services/api';
 import ManageStoreItems from './components/ManageStoreItems';
@@ -39,6 +41,9 @@ import SearchBar from './components/SearchBar';
 import LeaderboardPage from './pages/LeaderboardPage'; // Import the new page
 import PurchaseHistoryPage from './pages/PurchaseHistoryPage'; // Import PurchaseHistoryPage
 import PendingRequestsPage from './pages/PendingRequestsPage'; // Import PendingRequestsPage
+import ManageChoresPage from './pages/ManageChoresPage';
+import ChoresPage from './pages/ChoresPage';
+import ChoreHistoryPage from './pages/ChoreHistoryPage';
 
 // --- Context for Auth ---
 interface AuthContextType {
@@ -446,29 +451,66 @@ const App: React.FC = () => {
                         />
                     ))}
                     {currentUser.role === 'kid' && (
-                        <NavLink
-                            key="Purchase History"
-                            label="Purchase History"
-                            leftSection={<IconReceipt size="1rem" stroke={1.5} />}
-                            component={RouterLink}
-                            to="/history"
-                            active={location.pathname === "/history"}
-                            onClick={() => {
-                                navigate("/history");
-                                if (mobileOpened) toggleMobile();
-                            }}
-                        />
+                        <>
+                            <NavLink
+                                key="Chores"
+                                label="Chores"
+                                leftSection={<IconChecklist size="1rem" stroke={1.5} />}
+                                component={RouterLink}
+                                to="/chores"
+                                active={location.pathname === "/chores"}
+                                onClick={() => {
+                                    navigate("/chores");
+                                    if (mobileOpened) toggleMobile();
+                                }}
+                            />
+                            <NavLink
+                                key="Chore History"
+                                label="Chore History"
+                                leftSection={<IconHistory size="1rem" stroke={1.5} />}
+                                component={RouterLink}
+                                to="/chores/history"
+                                active={location.pathname === "/chores/history"}
+                                onClick={() => {
+                                    navigate("/chores/history");
+                                    if (mobileOpened) toggleMobile();
+                                }}
+                            />
+                            <NavLink
+                                key="Purchase History"
+                                label="Purchase History"
+                                leftSection={<IconReceipt size="1rem" stroke={1.5} />}
+                                component={RouterLink}
+                                to="/history"
+                                active={location.pathname === "/history"}
+                                onClick={() => {
+                                    navigate("/history");
+                                    if (mobileOpened) toggleMobile();
+                                }}
+                            />
+                        </>
                     )}
                     {currentUser.role === 'parent' && (
                         <>
                             <NavLink
-                                label="Parent Controls" // Changed label for clarity
+                                label="Parent Dashboard"
                                 leftSection={<IconSettings size="1rem" stroke={1.5} />}
                                 component={RouterLink}
                                 to="/" // Links to Dashboard where parent tools are
                                 active={location.pathname === "/"}
                                  onClick={() => {
                                     navigate("/");
+                                    if (mobileOpened) toggleMobile();
+                                }}
+                            />
+                            <NavLink
+                                label="Manage Chores"
+                                leftSection={<IconClipboardList size="1rem" stroke={1.5} />}
+                                component={RouterLink}
+                                to="/parent/manage-chores"
+                                active={location.pathname === "/parent/manage-chores"}
+                                onClick={() => {
+                                    navigate("/parent/manage-chores");
                                     if (mobileOpened) toggleMobile();
                                 }}
                             />
@@ -497,7 +539,12 @@ const App: React.FC = () => {
                         <Route path="/store" element={<StorePage />} />
                         <Route path="/leaderboard" element={<LeaderboardPage />} />
                         <Route path="/history" element={<PurchaseHistoryPage />} />
+                        {/* Parent Routes */}
                         <Route path="/parent/pending-requests" element={<PendingRequestsPage />} />
+                        <Route path="/parent/manage-chores" element={<ManageChoresPage />} />
+                        {/* Kid Routes */}
+                        <Route path="/chores" element={<ChoresPage />} />
+                        <Route path="/chores/history" element={<ChoreHistoryPage />} />
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
@@ -573,6 +620,7 @@ const theme = createTheme({
 
 const AppWrapper = () => (
     <MantineProvider theme={theme} defaultColorScheme="light">
+        <Notifications />
         <Router>
             <AppWithAuthProvider />
         </Router>

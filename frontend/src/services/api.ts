@@ -86,6 +86,42 @@ export interface PurchaseLog {
   timestamp: string; // ISO date string
   status: PurchaseStatus;
 }
+// Chore types
+export type ChoreStatus = "available" | "pending_approval" | "approved" | "rejected";
+
+export interface Chore {
+  id: string;
+  name: string;
+  description?: string;
+  points_value: number;
+  created_by_parent_id: string;
+  created_at: string; // ISO date string
+  updated_at: string; // ISO date string
+  is_active: boolean;
+}
+
+export interface ChoreCreate {
+  name: string;
+  description?: string;
+  points_value: number;
+}
+
+export interface ChoreLog {
+  id: string;
+  chore_id: string;
+  chore_name: string;
+  kid_id: string;
+  kid_username: string;
+  points_value: number;
+  status: ChoreStatus;
+  submitted_at: string; // ISO date string
+  reviewed_by_parent_id?: string;
+  reviewed_at?: string; // ISO date string
+}
+
+export interface ChoreActionRequestData {
+  chore_log_id: string;
+}
 
 // --- API Service Functions ---
 
@@ -128,5 +164,26 @@ export interface PurchaseActionData {
 export const getPendingPurchaseRequests = () => apiClient.get<PurchaseLog[]>('/parent/purchase-requests/pending');
 export const approvePurchaseRequest = (data: PurchaseActionData) => apiClient.post<PurchaseLog>('/parent/purchase-requests/approve', data);
 export const rejectPurchaseRequest = (data: PurchaseActionData) => apiClient.post<PurchaseLog>('/parent/purchase-requests/reject', data);
+
+// Chores
+// Parent - Chore Management
+export const createChore = (data: ChoreCreate) => apiClient.post<Chore>('/chores/', data);
+export const getMyCreatedChores = () => apiClient.get<Chore[]>('/chores/my-chores/');
+export const updateChore = (choreId: string, data: ChoreCreate) => apiClient.put<Chore>(`/chores/${choreId}`, data);
+export const deactivateChore = (choreId: string) => apiClient.post<Chore>(`/chores/${choreId}/deactivate`);
+export const deleteChore = (choreId: string) => apiClient.delete(`/chores/${choreId}`);
+
+// General Chore Interaction (Kids & Parents)
+export const getAvailableChores = () => apiClient.get<Chore[]>('/chores/');
+export const getChoreById = (choreId: string) => apiClient.get<Chore>(`/chores/${choreId}`);
+
+// Kid - Chore Submission
+export const submitChoreCompletion = (choreId: string) => apiClient.post<ChoreLog>(`/chores/${choreId}/submit`);
+export const getMyChoreHistory = () => apiClient.get<ChoreLog[]>('/chores/history/me');
+
+// Parent - Chore Submission Approval
+export const getPendingChoreSubmissionsForMyChores = () => apiClient.get<ChoreLog[]>('/parent/chore-submissions/pending');
+export const approveChoreSubmission = (data: ChoreActionRequestData) => apiClient.post<ChoreLog>('/parent/chore-submissions/approve', data);
+export const rejectChoreSubmission = (data: ChoreActionRequestData) => apiClient.post<ChoreLog>('/parent/chore-submissions/reject', data);
 
 export default apiClient;

@@ -19,7 +19,9 @@ AWS_REGION = os.getenv("AWS_REGION", "us-west-2")  # Default to us-west-2
 # These should be defined regardless of local or deployed environment
 USERS_TABLE_NAME = os.getenv("USERS_TABLE_NAME", "KidsRewardsUsers")  # Default for safety, but should be set by SAM
 STORE_ITEMS_TABLE_NAME = os.getenv("STORE_ITEMS_TABLE_NAME", "KidsRewardsStoreItems")  # Default for safety
-PURCHASE_LOGS_TABLE_NAME = os.getenv("PURCHASE_LOGS_TABLE_NAME", "KidsRewardsPurchaseLogs")  # New table
+PURCHASE_LOGS_TABLE_NAME = os.getenv("PURCHASE_LOGS_TABLE_NAME", "KidsRewardsPurchaseLogs")
+CHORES_TABLE_NAME = os.getenv("CHORES_TABLE_NAME", "KidsRewardsChores")
+CHORE_LOGS_TABLE_NAME = os.getenv("CHORE_LOGS_TABLE_NAME", "KidsRewardsChoreLogs")
 
 if DYNAMODB_ENDPOINT_OVERRIDE:
     dynamodb = boto3.resource("dynamodb", endpoint_url=DYNAMODB_ENDPOINT_OVERRIDE, region_name=AWS_REGION)
@@ -29,7 +31,9 @@ else:
 # Table resources are now initialized after dynamodb client is configured
 users_table = dynamodb.Table(USERS_TABLE_NAME)
 store_items_table = dynamodb.Table(STORE_ITEMS_TABLE_NAME)
-purchase_logs_table = dynamodb.Table(PURCHASE_LOGS_TABLE_NAME)  # New table resource
+purchase_logs_table = dynamodb.Table(PURCHASE_LOGS_TABLE_NAME)
+chores_table = dynamodb.Table(CHORES_TABLE_NAME)
+chore_logs_table = dynamodb.Table(CHORE_LOGS_TABLE_NAME)
 
 
 # Helper to convert Decimals from DynamoDB to int/float for Pydantic models
@@ -389,6 +393,407 @@ def get_purchase_log_by_id(log_id: str) -> Optional[models.PurchaseLog]:
     except ClientError as e:
         print(f"Error getting purchase log {log_id}: {e}")
         return None
-    except Exception as e:  # Catch potential isoformat errors
-        print(f"Error parsing purchase log {log_id} (possibly timestamp): {e}")
+    except Exception as e:  # Catch potential isoformat or Pydantic errors
+        print(f"Error parsing purchase log {log_id} (possibly timestamp or model validation): {e}")
         return None
+
+
+# --- Chore CRUD ---
+
+
+def create_chore(chore_in: models.ChoreCreate, parent_id: str) -> models.Chore:
+    chore_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow()
+    chore_data = {
+        "id": chore_id,
+        "name": chore_in.name,
+        "description": chore_in.description,
+        "points_value": Decimal(chore_in.points_value),
+        "created_by_parent_id": parent_id,
+        "created_at": timestamp.isoformat(),
+        "updated_at": timestamp.isoformat(),
+        "is_active": "true",  # Store as string "true"
+    }
+    # Remove None values for DynamoDB. If description is None, it will be omitted.
+    chore_item = {k: v for k, v in chore_data.items() if v is not None}
+
+    try:
+        chores_table.put_item(Item=chore_item)
+        # Construct model for response
+        return models.Chore(
+            id=chore_id,
+            name=chore_in.name,
+            description=chore_in.description,
+            points_value=chore_in.points_value,
+            created_by_parent_id=parent_id,
+            created_at=timestamp,
+            updated_at=timestamp,
+            is_active=True,
+        )
+    except ClientError as e:
+        print(f"Error creating chore {chore_in.name}: {e}")
+        raise HTTPException(status_code=500, detail="Could not create chore in database.") from e
+
+
+def get_chore_by_id(chore_id: str) -> Optional[models.Chore]:
+    try:
+        response = chores_table.get_item(Key={"id": chore_id})
+        item = response.get("Item")
+        if item:
+            return models.Chore(**replace_decimals(item))
+        return None
+    except ClientError as e:
+        print(f"Error getting chore {chore_id}: {e}")
+        return None
+
+
+def get_all_active_chores() -> List[models.Chore]:  # noqa: UP006
+    try:
+        # This requires a GSI on 'is_active' or a filter expression.
+        # For simplicity, scanning and filtering. For production, a GSI is better.
+        # GSI: IndexName='ActiveChoresIndex', KeySchema=[{AttributeName: 'is_active', KeyType: 'HASH'}]
+        # ProjectionType='ALL'. Query where is_active = True.
+        # For now, using a FilterExpression.
+        response = chores_table.scan(FilterExpression=boto3.dynamodb.conditions.Attr("is_active").eq("true"))
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = chores_table.scan(
+                FilterExpression=boto3.dynamodb.conditions.Attr("is_active").eq("true"),
+                ExclusiveStartKey=response["LastEvaluatedKey"],
+            )
+            items.extend(response.get("Items", []))
+        return [models.Chore(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error scanning active chores: {e}")
+        return []
+
+
+def get_chores_by_parent(parent_id: str) -> List[models.Chore]:  # noqa: UP006
+    try:
+        # Requires a GSI on 'created_by_parent_id'.
+        # GSI: IndexName='ParentChoresIndex', KeySchema=[{AttributeName: 'created_by_parent_id', KeyType: 'HASH'}]
+        # ProjectionType='ALL'.
+        response = chores_table.query(
+            IndexName="ParentChoresIndex",  # Assumed GSI
+            KeyConditionExpression=Key("created_by_parent_id").eq(parent_id),
+        )
+        items = response.get("Items", [])
+        return [models.Chore(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'ParentChoresIndex' not found for chores_table. Falling back to scan.")
+            all_chores = get_all_chores_scan_fallback()  # Implement a full scan if GSI fails
+            return [c for c in all_chores if c.created_by_parent_id == parent_id]
+        print(f"Error getting chores for parent {parent_id}: {e}")
+        return []
+
+
+def get_all_chores_scan_fallback() -> List[models.Chore]:  # noqa: UP006
+    try:
+        response = chores_table.scan()
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = chores_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+        return [models.Chore(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error scanning all chores (fallback): {e}")
+        return []
+
+
+def update_chore(chore_id: str, chore_in: models.ChoreCreate, current_parent_id: str) -> Optional[models.Chore]:
+    existing_chore = get_chore_by_id(chore_id)
+    if not existing_chore:
+        return None  # Chore not found
+    if existing_chore.created_by_parent_id != current_parent_id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this chore.")
+
+    timestamp = datetime.utcnow().isoformat()
+    try:
+        response = chores_table.update_item(
+            Key={"id": chore_id},
+            UpdateExpression="SET #n = :n, description = :d, points_value = :pv, updated_at = :ua",
+            ExpressionAttributeNames={"#n": "name"},
+            ExpressionAttributeValues={
+                ":n": chore_in.name,
+                ":d": chore_in.description,  # Can be None
+                ":pv": Decimal(chore_in.points_value),
+                ":ua": timestamp,
+                ":cpid": current_parent_id,  # Merged :cpid here
+            },
+            ConditionExpression="created_by_parent_id = :cpid",  # Ensure parent owns it
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.Chore(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise HTTPException(
+                status_code=403, detail="Conditional check failed. Not authorized or chore changed."
+            ) from e
+        print(f"Error updating chore {chore_id}: {e}")
+        return None
+
+
+def deactivate_chore(chore_id: str, current_parent_id: str) -> Optional[models.Chore]:
+    existing_chore = get_chore_by_id(chore_id)
+    if not existing_chore:
+        return None
+    if existing_chore.created_by_parent_id != current_parent_id:
+        raise HTTPException(status_code=403, detail="Not authorized to deactivate this chore.")
+
+    timestamp = datetime.utcnow().isoformat()
+    try:
+        response = chores_table.update_item(
+            Key={"id": chore_id},
+            UpdateExpression="SET is_active = :ia, updated_at = :ua",
+            ExpressionAttributeValues={
+                ":ia": "false",  # Store as string "false"
+                ":ua": timestamp,
+                ":cpid": current_parent_id,  # For condition
+            },
+            ConditionExpression="created_by_parent_id = :cpid",
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.Chore(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise HTTPException(
+                status_code=403, detail="Conditional check failed. Not authorized or chore changed."
+            ) from e
+        print(f"Error deactivating chore {chore_id}: {e}")
+        return None
+
+
+def delete_chore(chore_id: str, current_parent_id: str) -> bool:
+    # Consider implications: what if chore logs exist?
+    # For now, direct delete if parent matches.
+    existing_chore = get_chore_by_id(chore_id)
+    if not existing_chore:
+        return False  # Chore not found
+    if existing_chore.created_by_parent_id != current_parent_id:
+        raise HTTPException(status_code=403, detail="Not authorized to delete this chore.")
+
+    try:
+        chores_table.delete_item(
+            Key={"id": chore_id},
+            ConditionExpression="created_by_parent_id = :cpid",
+            ExpressionAttributeValues={":cpid": current_parent_id},
+        )
+        return True
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise HTTPException(
+                status_code=403, detail="Conditional check failed. Not authorized or chore changed."
+            ) from e
+        print(f"Error deleting chore {chore_id}: {e}")
+        return False
+
+
+# --- Chore Log CRUD ---
+
+
+def create_chore_log_submission(chore_id: str, kid_user: models.User) -> Optional[models.ChoreLog]:
+    chore = get_chore_by_id(chore_id)
+    if not chore or not chore.is_active:
+        raise HTTPException(status_code=404, detail="Active chore not found.")
+    if kid_user.role != models.UserRole.KID:
+        raise HTTPException(status_code=403, detail="Only kids can submit chores.")
+
+    log_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow()
+
+    log_data = {
+        "id": log_id,
+        "chore_id": chore.id,
+        "chore_name": chore.name,
+        "kid_id": kid_user.id,  # kid_user.id is username
+        "kid_username": kid_user.username,
+        "points_value": Decimal(chore.points_value),
+        "status": models.ChoreStatus.PENDING_APPROVAL.value,
+        "submitted_at": timestamp.isoformat(),
+        "reviewed_by_parent_id": None,
+        "reviewed_at": None,
+    }
+    try:
+        chore_logs_table.put_item(Item=log_data)
+        return models.ChoreLog(
+            id=log_id,
+            chore_id=chore.id,
+            chore_name=chore.name,
+            kid_id=kid_user.id,
+            kid_username=kid_user.username,
+            points_value=chore.points_value,  # int for model
+            status=models.ChoreStatus.PENDING_APPROVAL,
+            submitted_at=timestamp,
+            reviewed_by_parent_id=None,
+            reviewed_at=None,
+        )
+    except ClientError as e:
+        print(f"Error creating chore log for kid {kid_user.username}, chore {chore.name}: {e}")
+        raise HTTPException(status_code=500, detail="Could not submit chore.") from e
+
+
+def get_chore_log_by_id(log_id: str) -> Optional[models.ChoreLog]:
+    try:
+        response = chore_logs_table.get_item(Key={"id": log_id})
+        item = response.get("Item")
+        if item:
+            return models.ChoreLog(**replace_decimals(item))
+        return None
+    except ClientError as e:
+        print(f"Error getting chore log {log_id}: {e}")
+        return None
+
+
+def update_chore_log_status(
+    log_id: str,
+    new_status: models.ChoreStatus,
+    parent_user: models.User,
+    # points_to_award: Optional[int] = None # Points are on the chore log itself
+) -> Optional[models.ChoreLog]:
+    chore_log = get_chore_log_by_id(log_id)
+    if not chore_log:
+        raise HTTPException(status_code=404, detail="Chore log not found.")
+    if chore_log.status not in [models.ChoreStatus.PENDING_APPROVAL]:  # Can only approve/reject pending
+        raise HTTPException(
+            status_code=400, detail=f"Chore log is not pending approval. Current status: {chore_log.status}"
+        )
+
+    # Verify the parent reviewing is the one who created the original chore
+    original_chore = get_chore_by_id(chore_log.chore_id)
+    if not original_chore or original_chore.created_by_parent_id != parent_user.id:  # parent_user.id is username
+        raise HTTPException(
+            status_code=403, detail="Not authorized to review this chore log. Chore created by another parent."
+        )
+
+    reviewed_at_ts = datetime.utcnow()
+
+    update_expression = "SET #s = :s, reviewed_by_parent_id = :pid, reviewed_at = :rat"
+    expression_attribute_values = {
+        ":s": new_status.value,
+        ":pid": parent_user.id,
+        ":rat": reviewed_at_ts.isoformat(),
+    }
+    expression_attribute_names = {"#s": "status"}
+
+    if new_status == models.ChoreStatus.APPROVED:
+        # Award points to the kid
+        kid_user_to_update = get_user_by_username(chore_log.kid_username)
+        if not kid_user_to_update:
+            raise HTTPException(
+                status_code=404, detail=f"Kid user {chore_log.kid_username} not found for point update."
+            )
+        # update_user_points handles adding points
+        updated_kid = update_user_points(chore_log.kid_username, chore_log.points_value)
+        if not updated_kid:
+            # This is a critical failure, points were not awarded.
+            # Decide on rollback or error. For now, raise error.
+            raise HTTPException(status_code=500, detail="Failed to award points to the kid.")
+    elif new_status == models.ChoreStatus.REJECTED:
+        pass  # No points awarded
+
+    try:
+        response = chore_logs_table.update_item(
+            Key={"id": log_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=expression_attribute_names,
+            ExpressionAttributeValues=expression_attribute_values,
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.ChoreLog(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        print(f"Error updating chore log {log_id} status: {e}")
+        # If points were awarded but this failed, there's an inconsistency.
+        # More robust transaction handling might be needed for production (e.g. DynamoDB Transactions).
+        return None
+
+
+def get_chore_logs_by_kid_id(kid_id: str) -> List[models.ChoreLog]:  # noqa: UP006
+    try:
+        # Requires GSI on 'kid_id' and 'submitted_at' for sorting.
+        # GSI: IndexName='KidChoreLogIndex', HashKey='kid_id', RangeKey='submitted_at'
+        response = chore_logs_table.query(
+            IndexName="KidChoreLogIndex",  # Assumed GSI
+            KeyConditionExpression=Key("kid_id").eq(kid_id),
+            ScanIndexForward=False,  # Newest first
+        )
+        items = response.get("Items", [])
+        return [models.ChoreLog(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print(f"Warning: GSI 'KidChoreLogIndex' not found. Falling back to scan for kid_id '{kid_id}'.")
+            all_logs = get_all_chore_logs_scan_fallback()
+            filtered_logs = [log for log in all_logs if log.kid_id == kid_id]
+            return sorted(filtered_logs, key=lambda x: x.submitted_at, reverse=True)
+        print(f"Error getting chore logs for kid {kid_id}: {e}")
+        return []
+
+
+def get_chore_logs_by_status_for_parent(status: models.ChoreStatus, parent_id: str) -> List[models.ChoreLog]:  # noqa: UP006
+    try:
+        # This is more complex. We need logs for chores CREATED BY this parent that have a certain status.
+        # One way:
+        # 1. Get all chores by parent_id.
+        # 2. For each chore, query chore_logs by chore_id and status. (Inefficient)
+        # Alternative: GSI on chore_logs_table: 'ChoreStatusIndex' (status HASH, submitted_at RANGE)
+        # Then filter client-side by checking original_chore.created_by_parent_id.
+
+        # Assuming GSI: IndexName='ChoreLogStatusIndex', HashKey='status', RangeKey='submitted_at'
+        response = chore_logs_table.query(
+            IndexName="ChoreLogStatusIndex",  # Assumed GSI
+            KeyConditionExpression=Key("status").eq(status.value),
+            ScanIndexForward=False,  # Newest first
+        )
+        items = response.get("Items", [])
+
+        # Filter these logs to only include those where the original chore was created by the parent_id
+        parent_chore_logs = []
+        for item in items:
+            log = models.ChoreLog(**replace_decimals(item))
+            # This requires a fetch for each chore, which is not ideal.
+            # A better approach might be to denormalize created_by_parent_id onto the chore_log itself.
+            # For now, let's do the fetch.
+            chore = get_chore_by_id(log.chore_id)
+            if chore and chore.created_by_parent_id == parent_id:
+                parent_chore_logs.append(log)
+        return parent_chore_logs
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print(f"Warning: GSI 'ChoreLogStatusIndex' not found. Falling back to scan for status '{status.value}'.")
+            # Fallback: Get all logs, then filter
+            all_logs = get_all_chore_logs_scan_fallback()
+            filtered_logs = []
+            for log in all_logs:
+                if log.status == status:
+                    chore = get_chore_by_id(log.chore_id)  # Still need this check
+                    if chore and chore.created_by_parent_id == parent_id:
+                        filtered_logs.append(log)
+            return sorted(filtered_logs, key=lambda x: x.submitted_at, reverse=True)
+        print(f"Error getting chore logs by status {status.value} for parent {parent_id}: {e}")
+        return []
+
+
+def get_all_chore_logs_scan_fallback() -> List[models.ChoreLog]:  # noqa: UP006
+    try:
+        response = chore_logs_table.scan()
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = chore_logs_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+        return [models.ChoreLog(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error scanning all chore logs (fallback): {e}")
+        return []
+
+        # It might be beneficial to add 'created_by_parent_id' to ChoreLog items
+        # to simplify queries like get_chore_logs_by_status_for_parent.
+        # This would be denormalization. If added, update ChoreLog model and creation logic.

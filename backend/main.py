@@ -220,6 +220,193 @@ async def delete_store_item(item_id: str):
     return None
 
 
+# --- Chore Management Endpoints (Parent) ---
+
+
+@app.post("/chores/", response_model=models.Chore, status_code=status.HTTP_201_CREATED)
+async def create_new_chore(
+    chore_in: models.ChoreCreate,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Create a new chore. Only accessible by parents.
+    The `created_by_parent_id` will be the ID of the authenticated parent.
+    """
+    return crud.create_chore(chore_in=chore_in, parent_id=current_parent.id)
+
+
+@app.get("/chores/my-chores/", response_model=List[models.Chore])  # noqa: UP006
+async def get_my_created_chores(
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Get all chores created by the currently authenticated parent.
+    """
+    # This assumes a GSI 'ParentChoresIndex' on chores_table or a scan fallback in crud
+    return crud.get_chores_by_parent(parent_id=current_parent.id)
+
+
+@app.put("/chores/{chore_id}", response_model=models.Chore)
+async def update_existing_chore(
+    chore_id: str,
+    chore_in: models.ChoreCreate,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Update an existing chore. Only the parent who created the chore can update it.
+    """
+    updated_chore = crud.update_chore(chore_id=chore_id, chore_in=chore_in, current_parent_id=current_parent.id)
+    if not updated_chore:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Chore not found or not authorized to update."
+        )
+    return updated_chore
+
+
+@app.post("/chores/{chore_id}/deactivate", response_model=models.Chore)
+async def deactivate_existing_chore(
+    chore_id: str,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Deactivate a chore. Only the parent who created it can deactivate.
+    """
+    deactivated_chore = crud.deactivate_chore(chore_id=chore_id, current_parent_id=current_parent.id)
+    if not deactivated_chore:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Chore not found or not authorized to deactivate."
+        )
+    return deactivated_chore
+
+
+@app.delete("/chores/{chore_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_existing_chore(
+    chore_id: str,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Delete a chore. Only the parent who created it can delete.
+    Consider implications for existing chore logs.
+    """
+    success = crud.delete_chore(chore_id=chore_id, current_parent_id=current_parent.id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Chore not found or not authorized to delete."
+        )
+    return None
+
+
+# --- Chore Interaction Endpoints (Kid & General) ---
+
+
+@app.get("/chores/", response_model=List[models.Chore])  # noqa: UP006
+async def get_available_chores():
+    """
+    Get all active and available chores.
+    """
+    return crud.get_all_active_chores()
+
+
+@app.get("/chores/{chore_id}", response_model=models.Chore)
+async def get_specific_chore(chore_id: str):
+    """
+    Get details of a specific chore by its ID.
+    """
+    chore = crud.get_chore_by_id(chore_id)
+    if not chore:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Chore not found.")
+    return chore
+
+
+@app.post("/chores/{chore_id}/submit", response_model=models.ChoreLog, status_code=status.HTTP_202_ACCEPTED)
+async def submit_chore_completion(
+    chore_id: str,
+    current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+):
+    """
+    Kid submits a chore they have completed. Creates a ChoreLog entry with PENDING_APPROVAL status.
+    """
+    chore_log = crud.create_chore_log_submission(chore_id=chore_id, kid_user=current_kid)
+    if not chore_log:
+        # crud function raises HTTPException, so this might be redundant
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not submit chore completion."
+        )
+    return chore_log
+
+
+@app.get("/chores/history/me", response_model=List[models.ChoreLog])  # noqa: UP006
+async def get_my_chore_history(
+    current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+):
+    """
+    Kid retrieves their own chore history.
+    """
+    # Assumes GSI 'KidChoreLogIndex' or scan fallback in crud
+    return crud.get_chore_logs_by_kid_id(kid_id=current_kid.id)
+
+
+# --- Chore Approval Endpoints (Parent) ---
+
+
+class ChoreActionRequest(models.BaseModel):
+    chore_log_id: str
+
+
+@app.get("/parent/chore-submissions/pending", response_model=List[models.ChoreLog])  # noqa: UP006
+async def get_pending_chore_submissions_for_my_chores(
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Parent retrieves all PENDING chore submissions for chores they originally created.
+    """
+    # This assumes a GSI or complex filtering in crud.get_chore_logs_by_status_for_parent
+    return crud.get_chore_logs_by_status_for_parent(
+        status=models.ChoreStatus.PENDING_APPROVAL, parent_id=current_parent.id
+    )
+
+
+@app.post("/parent/chore-submissions/approve", response_model=models.ChoreLog)
+async def approve_chore_submission(
+    request_data: ChoreActionRequest,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Parent approves a chore submission. Points are awarded to the kid.
+    Only the parent who created the original chore can approve.
+    """
+    # crud.update_chore_log_status handles logic including point awarding and authorization
+    approved_log = crud.update_chore_log_status(
+        log_id=request_data.chore_log_id, new_status=models.ChoreStatus.APPROVED, parent_user=current_parent
+    )
+    if not approved_log:
+        # crud function raises detailed HTTPExceptions, this is a fallback
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to approve chore submission."
+        )
+    return approved_log
+
+
+@app.post("/parent/chore-submissions/reject", response_model=models.ChoreLog)
+async def reject_chore_submission(
+    request_data: ChoreActionRequest,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Parent rejects a chore submission.
+    Only the parent who created the original chore can reject.
+    """
+    rejected_log = crud.update_chore_log_status(
+        log_id=request_data.chore_log_id, new_status=models.ChoreStatus.REJECTED, parent_user=current_parent
+    )
+    if not rejected_log:
+        # crud function raises detailed HTTPExceptions, this is a fallback
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to reject chore submission."
+        )
+    return rejected_log
+
+
 @app.get("/")
 async def read_root():
     return {"message": "Kids Rewards API is running!"}

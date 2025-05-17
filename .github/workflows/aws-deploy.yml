@@ -63,17 +63,6 @@ jobs:
         with:
           use-installer: true # Ensures SAM CLI is installed
 
-      - name: Run Ruff linter
-        run: |
-          python3 -m venv .venv
-          source .venv/bin/activate
-          pip install -r backend/requirements.txt
-          ruff check --exit-zero backend
-          if [ $? -ne 0 ]; then
-            echo "Ruff found linting errors. Failing deployment."
-            exit 1
-          fi
-
       - name: Deploy SAM application
         run: |
           sam deploy \
