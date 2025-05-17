@@ -43,9 +43,10 @@ Resources:
       Environment:
         Variables:
           DYNAMODB_ENDPOINT_OVERRIDE: !If [IsLocalEnvironment, !Ref LocalDynamoDBEndpoint, !Ref "AWS::NoValue"] # Use local endpoint if parameter is provided
-          USERS_TABLE_NAME: !If [IsLocalEnvironment, "local-my-table", !Sub "${TableNamePrefix}my-table"]
-          STORE_ITEMS_TABLE_NAME: !If [IsLocalEnvironment, "local-store-items-table", !Sub "${TableNamePrefix}store-items-table"]
-          APP_SECRET_KEY: !Ref AppSecret # Add this line
+          USERS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsUsers", !Sub "${TableNamePrefix}KidsRewardsUsers"]
+          STORE_ITEMS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsStoreItems", !Sub "${TableNamePrefix}KidsRewardsStoreItems"]
+          PURCHASE_LOGS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPurchaseLogs", !Sub "${TableNamePrefix}KidsRewardsPurchaseLogs"]
+          APP_SECRET_KEY: !Ref AppSecret
       Policies: # Corrected indentation for the Policies key
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
@@ -56,7 +57,7 @@ Resources:
   KidsRewardsTable: # New DynamoDB Table Resource
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !If [IsLocalEnvironment, "local-my-table", !Sub "${TableNamePrefix}my-table"] # Use local name if local env
+      TableName: !If [IsLocalEnvironment, "KidsRewardsUsers", !Sub "${TableNamePrefix}KidsRewardsUsers"]
       AttributeDefinitions:
         - AttributeName: username
           AttributeType: S
@@ -71,7 +72,7 @@ Resources:
   KidsRewardsStoreItemsTable: # New DynamoDB Table Resource for Store Items
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: !If [IsLocalEnvironment, "local-store-items-table", !Sub "${TableNamePrefix}store-items-table"] # Use local name if local env
+      TableName: !If [IsLocalEnvironment, "KidsRewardsStoreItems", !Sub "${TableNamePrefix}KidsRewardsStoreItems"]
       AttributeDefinitions:
         - AttributeName: id
           AttributeType: S # Assuming id is a string, adjust if needed
@@ -81,6 +82,50 @@ Resources:
       ProvisionedThroughput: # Or use OnDemandThroughput
         ReadCapacityUnits: 5
         WriteCapacityUnits: 5
+    DeletionPolicy: Retain
+
+  KidsRewardsPurchaseLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "KidsRewardsPurchaseLogs", !Sub "${TableNamePrefix}KidsRewardsPurchaseLogs"]
+      AttributeDefinitions:
+        - AttributeName: id # Primary Key
+          AttributeType: S
+        - AttributeName: user_id # For GSI UserIdTimestampIndex
+          AttributeType: S
+        - AttributeName: timestamp # For GSIs (Range Key)
+          AttributeType: S # Timestamps stored as ISO strings
+        - AttributeName: status    # For GSI StatusTimestampIndex
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdTimestampIndex
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
+        - IndexName: StatusTimestampIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: timestamp
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
     DeletionPolicy: Retain
 
 Conditions:

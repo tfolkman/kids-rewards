@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Any, List, Optional
 
 import boto3
+from boto3.dynamodb.conditions import Key, Attr # Adding Key and Attr
 from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
