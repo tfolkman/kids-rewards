@@ -35,6 +35,7 @@ import * as api from './services/api';
 import ManageStoreItems from './components/ManageStoreItems';
 import AwardPoints from './components/AwardPoints';
 import UserManagement from './components/UserManagement'; // Import UserManagement
+import SearchBar from './components/SearchBar';
 import LeaderboardPage from './pages/LeaderboardPage'; // Import the new page
 import PurchaseHistoryPage from './pages/PurchaseHistoryPage'; // Import PurchaseHistoryPage
 import PendingRequestsPage from './pages/PendingRequestsPage'; // Import PendingRequestsPage

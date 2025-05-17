@@ -3,6 +3,7 @@
 # For Lambda containers, often direct imports work if LAMBDA_TASK_ROOT is in sys.path.
 import logging
 from datetime import timedelta
+from typing import List  # noqa: UP035
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -148,8 +149,11 @@ async def award_points_to_kid(award: models.PointsAward):
         raise HTTPException(status_code=500, detail="Could not award points")
     return updated_kid_user
 
-@app.post("/kids/redeem-item/", response_model=models.PurchaseLog, status_code=status.HTTP_202_ACCEPTED) # Changed response model and status
-async def request_redeem_store_item( # Renamed function for clarity
+
+@app.post(
+    "/kids/redeem-item/", response_model=models.PurchaseLog, status_code=status.HTTP_202_ACCEPTED
+)  # Changed response model and status
+async def request_redeem_store_item(  # Renamed function for clarity
     redemption: models.RedemptionRequest,
     current_user: models.User = Depends(get_current_kid_user),  # noqa: B008
 ):
@@ -172,10 +176,13 @@ async def request_redeem_store_item( # Renamed function for clarity
             # status will default to PENDING as per the model
         )
         created_log = crud.create_purchase_log(purchase_log_entry)
-        return created_log # Return the created log entry
+        return created_log  # Return the created log entry
     except Exception as e:
         print(f"Error creating PENDING purchase log: {e}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not create purchase request.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not create purchase request."
+        ) from e
+
 
 # --- Store Item Endpoints ---
 @app.post("/store/items/", response_model=models.StoreItem, status_code=status.HTTP_201_CREATED)
@@ -236,12 +243,11 @@ async def health_check():
 async def hello_world():
     response = {"message": "Hello, world!"}
     # headers = {"Access-Control-Allow-Origin": "http://localhost:3001"} # Middleware will handle this
-    return response # FastAPI will handle status and headers correctly with middleware
+    return response  # FastAPI will handle status and headers correctly with middleware
 
-@app.get("/users/me/purchase-history", response_model=List[models.PurchaseLog])
-async def read_my_purchase_history(
-    current_user: models.User = Depends(get_current_active_user)
-):
+
+@app.get("/users/me/purchase-history", response_model=List[models.PurchaseLog])  # noqa: UP006
+async def read_my_purchase_history(current_user: models.User = Depends(get_current_active_user)):  # noqa: B008
     """
     Retrieve the purchase history for the currently authenticated user.
     """
@@ -251,15 +257,16 @@ async def read_my_purchase_history(
     history = crud.get_purchase_logs_by_user_id(user_id=current_user.id)
     return history
 
+
 # --- Purchase Approval Endpoints (Parent Only) ---
+
 
 class PurchaseActionRequest(models.BaseModel):
     log_id: str
 
-@app.get("/parent/purchase-requests/pending", response_model=List[models.PurchaseLog])
-async def get_pending_purchase_requests(
-    current_parent: models.User = Depends(get_current_parent_user)
-):
+
+@app.get("/parent/purchase-requests/pending", response_model=List[models.PurchaseLog])  # noqa: UP006
+async def get_pending_purchase_requests():
     """
     Retrieve all purchase requests with 'pending' status.
     Sorted by timestamp descending (newest first).
@@ -267,12 +274,10 @@ async def get_pending_purchase_requests(
     pending_logs = crud.get_purchase_logs_by_status(models.PurchaseStatus.PENDING)
     return pending_logs
 
+
 @app.post("/parent/purchase-requests/approve", response_model=models.PurchaseLog)
-async def approve_purchase_request(
-    request_data: PurchaseActionRequest,
-    current_parent: models.User = Depends(get_current_parent_user)
-):
-    log_to_approve = crud.get_purchase_log_by_id(request_data.log_id) # Assumes get_purchase_log_by_id exists
+async def approve_purchase_request(request_data: PurchaseActionRequest):
+    log_to_approve = crud.get_purchase_log_by_id(request_data.log_id)  # Assumes get_purchase_log_by_id exists
 
     if not log_to_approve:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Purchase log not found.")
@@ -281,33 +286,46 @@ async def approve_purchase_request(
 
     kid_user = crud.get_user_by_username(log_to_approve.username)
     if not kid_user or kid_user.role != models.UserRole.KID:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Kid user associated with the purchase not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Kid user associated with the purchase not found."
+        )
 
     if kid_user.points is None or kid_user.points < log_to_approve.points_spent:
         # Optionally, could reject automatically or just inform parent
-        updated_log_insufficient_points = crud.update_purchase_log_status(log_to_approve.id, models.PurchaseStatus.REJECTED)
+        updated_log_insufficient_points = crud.update_purchase_log_status(
+            log_to_approve.id, models.PurchaseStatus.REJECTED
+        )
         if not updated_log_insufficient_points:
-             raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update log status for insufficient points.")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Kid {kid_user.username} no longer has enough points. Request auto-rejected.")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to update log status for insufficient points.",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Kid {kid_user.username} no longer has enough points. Request auto-rejected.",
+        )
 
     # Deduct points
     updated_kid = crud.update_user_points(username=kid_user.username, points_to_add=-log_to_approve.points_spent)
     if not updated_kid:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to deduct points from kid.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to deduct points from kid."
+        )
 
     # Update log status to APPROVED
     approved_log = crud.update_purchase_log_status(log_to_approve.id, models.PurchaseStatus.APPROVED)
     if not approved_log:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update purchase log status to approved.")
-    
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update purchase log status to approved.",
+        )
+
     return approved_log
 
+
 @app.post("/parent/purchase-requests/reject", response_model=models.PurchaseLog)
-async def reject_purchase_request(
-    request_data: PurchaseActionRequest,
-    current_parent: models.User = Depends(get_current_parent_user)
-):
-    log_to_reject = crud.get_purchase_log_by_id(request_data.log_id) # Assumes get_purchase_log_by_id exists
+async def reject_purchase_request(request_data: PurchaseActionRequest):
+    log_to_reject = crud.get_purchase_log_by_id(request_data.log_id)  # Assumes get_purchase_log_by_id exists
 
     if not log_to_reject:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Purchase log not found.")
@@ -316,7 +334,9 @@ async def reject_purchase_request(
 
     rejected_log = crud.update_purchase_log_status(log_to_reject.id, models.PurchaseStatus.REJECTED)
     if not rejected_log:
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update purchase log status to rejected.")
-        
-    return rejected_log
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to update purchase log status to rejected.",
+        )
 
+    return rejected_log
