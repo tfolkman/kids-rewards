@@ -1,23 +1,21 @@
-import pytest
-from datetime import datetime
 
 from models import (
-    UserRole,
-    UserBase,
-    UserCreate,
-    User,
-    Token,
-    TokenData,
-    StoreItemBase,
-    StoreItemCreate,
-    StoreItem,
     PointsAward,
-    RedemptionRequest,
-    UserPromoteRequest,
-    PurchaseStatus,
+    PurchaseLog,
     PurchaseLogBase,
     PurchaseLogCreate,
-    PurchaseLog,
+    PurchaseStatus,
+    RedemptionRequest,
+    StoreItem,
+    StoreItemBase,
+    StoreItemCreate,
+    Token,
+    TokenData,
+    User,
+    UserBase,
+    UserCreate,
+    UserPromoteRequest,
+    UserRole,
 )
 
 
