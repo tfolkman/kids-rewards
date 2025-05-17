@@ -28,15 +28,17 @@ import {
     MantineTheme
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers } from '@tabler/icons-react'; // Added IconUserUp and IconListNumbers
+import { IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, IconReceipt, IconHourglassHigh } from '@tabler/icons-react'; // Added IconUserUp, IconListNumbers, IconReceipt, and IconHourglassHigh
 import '@mantine/core/styles.css';
 import './App.css';
 import * as api from './services/api';
 import ManageStoreItems from './components/ManageStoreItems';
 import AwardPoints from './components/AwardPoints';
 import UserManagement from './components/UserManagement'; // Import UserManagement
-import LeaderboardPage from './pages/LeaderboardPage'; // Import the new page
 import SearchBar from './components/SearchBar';
+import LeaderboardPage from './pages/LeaderboardPage'; // Import the new page
+import PurchaseHistoryPage from './pages/PurchaseHistoryPage'; // Import PurchaseHistoryPage
+import PendingRequestsPage from './pages/PendingRequestsPage'; // Import PendingRequestsPage
 
 // --- Context for Auth ---
 interface AuthContextType {
@@ -294,9 +296,13 @@ const StorePage = () => {
             return;
         }
         try {
-            const response = await api.redeemItem({ item_id: itemId });
-            alert("Item redeemed successfully!"); // TODO: Replace with Mantine notification
-            setCurrentUser(response.data);
+            // The redeemItem function now returns a PurchaseLog, not a User.
+            // It also initiates a pending request, so points aren't immediately deducted.
+            await api.redeemItem({ item_id: itemId });
+            // TODO: Replace alert with a Mantine notification for better UX
+            alert("Redemption request sent! A parent will need to approve it.");
+            // No longer setting current user here as points don't change immediately.
+            // The user's points will update after parent approval and subsequent data refresh.
         } catch (err) {
             console.error("Error redeeming item:", err);
             alert("Failed to redeem item."); // TODO: Replace with Mantine notification
@@ -389,6 +395,7 @@ const App: React.FC = () => {
         { icon: IconHome, label: 'Dashboard', to: '/' },
         { icon: IconShoppingCart, label: 'Store', to: '/store' },
         { icon: IconListNumbers, label: 'Leaderboard', to: '/leaderboard' },
+        // Purchase History will be added conditionally below for kids
     ];
 
     return (
@@ -438,18 +445,45 @@ const App: React.FC = () => {
                             }}
                         />
                     ))}
-                    {currentUser.role === 'parent' && (
+                    {currentUser.role === 'kid' && (
                         <NavLink
-                            label="Parent Controls" // Changed label for clarity
-                            leftSection={<IconSettings size="1rem" stroke={1.5} />}
+                            key="Purchase History"
+                            label="Purchase History"
+                            leftSection={<IconReceipt size="1rem" stroke={1.5} />}
                             component={RouterLink}
-                            to="/" // Links to Dashboard where parent tools are
-                            active={location.pathname === "/"}
-                             onClick={() => {
-                                navigate("/");
+                            to="/history"
+                            active={location.pathname === "/history"}
+                            onClick={() => {
+                                navigate("/history");
                                 if (mobileOpened) toggleMobile();
                             }}
                         />
+                    )}
+                    {currentUser.role === 'parent' && (
+                        <>
+                            <NavLink
+                                label="Parent Controls" // Changed label for clarity
+                                leftSection={<IconSettings size="1rem" stroke={1.5} />}
+                                component={RouterLink}
+                                to="/" // Links to Dashboard where parent tools are
+                                active={location.pathname === "/"}
+                                 onClick={() => {
+                                    navigate("/");
+                                    if (mobileOpened) toggleMobile();
+                                }}
+                            />
+                            <NavLink
+                                label="Pending Requests"
+                                leftSection={<IconHourglassHigh size="1rem" stroke={1.5} />}
+                                component={RouterLink}
+                                to="/parent/pending-requests"
+                                active={location.pathname === "/parent/pending-requests"}
+                                onClick={() => {
+                                    navigate("/parent/pending-requests");
+                                    if (mobileOpened) toggleMobile();
+                                }}
+                            />
+                        </>
                     )}
                 </AppShell.Navbar>
             )}
@@ -462,6 +496,8 @@ const App: React.FC = () => {
                         <Route path="/" element={<Dashboard />} />
                         <Route path="/store" element={<StorePage />} />
                         <Route path="/leaderboard" element={<LeaderboardPage />} />
+                        <Route path="/history" element={<PurchaseHistoryPage />} />
+                        <Route path="/parent/pending-requests" element={<PendingRequestsPage />} />
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>

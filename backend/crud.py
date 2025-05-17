@@ -1,9 +1,11 @@
 import os
 import uuid
+from datetime import datetime
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, List, Optional  # noqa: UP035
 
 import boto3
+from boto3.dynamodb.conditions import Key  # Adding Key and Attr
 from botocore.exceptions import ClientError
 from fastapi import HTTPException
 
@@ -17,6 +19,7 @@ AWS_REGION = os.getenv("AWS_REGION", "us-west-2")  # Default to us-west-2
 # These should be defined regardless of local or deployed environment
 USERS_TABLE_NAME = os.getenv("USERS_TABLE_NAME", "KidsRewardsUsers")  # Default for safety, but should be set by SAM
 STORE_ITEMS_TABLE_NAME = os.getenv("STORE_ITEMS_TABLE_NAME", "KidsRewardsStoreItems")  # Default for safety
+PURCHASE_LOGS_TABLE_NAME = os.getenv("PURCHASE_LOGS_TABLE_NAME", "KidsRewardsPurchaseLogs")  # New table
 
 if DYNAMODB_ENDPOINT_OVERRIDE:
     dynamodb = boto3.resource("dynamodb", endpoint_url=DYNAMODB_ENDPOINT_OVERRIDE, region_name=AWS_REGION)
@@ -26,6 +29,7 @@ else:
 # Table resources are now initialized after dynamodb client is configured
 users_table = dynamodb.Table(USERS_TABLE_NAME)
 store_items_table = dynamodb.Table(STORE_ITEMS_TABLE_NAME)
+purchase_logs_table = dynamodb.Table(PURCHASE_LOGS_TABLE_NAME)  # New table resource
 
 
 # Helper to convert Decimals from DynamoDB to int/float for Pydantic models
@@ -246,3 +250,145 @@ def delete_store_item(item_id: str) -> bool:
     except ClientError as e:
         print(f"Error deleting store item {item_id}: {e}")
         return False
+
+
+# --- Import HTTPException for create_user and create_store_item ---
+# This should ideally be at the top of the file, but placing it here to avoid re-reading the whole file
+
+
+# --- Purchase Log CRUD ---
+
+
+def create_purchase_log(log_in: models.PurchaseLogCreate) -> models.PurchaseLog:
+    log_id = str(uuid.uuid4())
+    log_data = {
+        "id": log_id,
+        "user_id": log_in.user_id,
+        "username": log_in.username,
+        "item_id": log_in.item_id,
+        "item_name": log_in.item_name,
+        "points_spent": Decimal(log_in.points_spent),  # Store as Decimal
+        "timestamp": log_in.timestamp.isoformat(),  # Store ISO format string
+        "status": log_in.status.value,
+    }
+    try:
+        purchase_logs_table.put_item(Item=log_data)
+        # Construct the model for response, ensuring correct types
+        return models.PurchaseLog(
+            id=log_id,
+            user_id=log_in.user_id,
+            username=log_in.username,
+            item_id=log_in.item_id,
+            item_name=log_in.item_name,
+            points_spent=log_in.points_spent,  # Keep as int for Pydantic model
+            timestamp=log_in.timestamp,  # Keep as datetime for Pydantic model
+            status=log_in.status,
+        )
+    except ClientError as e:
+        print(f"Error creating purchase log for user {log_in.username}, item {log_in.item_name}: {e}")
+        raise HTTPException(status_code=500, detail="Could not create purchase log in database.") from e
+
+
+def get_purchase_logs_by_user_id(user_id: str) -> List[models.PurchaseLog]:  # noqa: UP006
+    try:
+        # This query assumes 'user_id' is a Global Secondary Index (GSI) on the purchase_logs_table
+        # If not, you'd need to scan and filter, which is less efficient for large tables.
+        # For now, let's assume a GSI 'UserIdIndex' with 'user_id' as the hash key.
+        # If you don't have a GSI, you might need to use a scan or reconsider the query.
+        # A more common pattern might be to query by username if that's indexed.
+        # Let's use a GSI named 'UserIdTimestampIndex' with user_id as HASH and timestamp as RANGE for sorting.
+        response = purchase_logs_table.query(
+            IndexName="UserIdTimestampIndex",  # Assuming this GSI exists
+            KeyConditionExpression=Key("user_id").eq(user_id),
+            ScanIndexForward=False,  # Sort by timestamp descending (newest first)
+        )
+        items = response.get("Items", [])
+        return [models.PurchaseLog(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        # Handle case where GSI might not exist or other errors
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'UserIdTimestampIndex' not found for purchase_logs_table. Falling back to scan.")
+            # Fallback to scan if GSI doesn't exist (less efficient)
+            return get_all_purchase_logs(filter_user_id=user_id)
+        print(f"Error getting purchase logs for user_id {user_id}: {e}")
+        return []
+
+
+def get_all_purchase_logs(filter_user_id: Optional[str] = None) -> List[models.PurchaseLog]:  # noqa: UP006
+    try:
+        scan_kwargs = {}
+        if filter_user_id:
+            scan_kwargs["FilterExpression"] = Key("user_id").eq(filter_user_id)
+
+        response = purchase_logs_table.scan(**scan_kwargs)
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            scan_kwargs["ExclusiveStartKey"] = response["LastEvaluatedKey"]
+            response = purchase_logs_table.scan(**scan_kwargs)
+            items.extend(response.get("Items", []))
+
+        # Sort by timestamp client-side if not using a query with sort key
+        # DynamoDB scan doesn't guarantee order unless you sort after fetching
+        parsed_items = [models.PurchaseLog(**replace_decimals(item)) for item in items]
+        parsed_items.sort(key=lambda x: x.timestamp, reverse=True)  # Sort newest first
+        return parsed_items
+    except ClientError as e:
+        print(f"Error scanning all purchase logs: {e}")
+        return []
+
+
+def get_purchase_logs_by_status(status: models.PurchaseStatus) -> List[models.PurchaseLog]:  # noqa: UP006
+    try:
+        # This query assumes 'status' is a Global Secondary Index (GSI) on the purchase_logs_table
+        # For example, a GSI named 'StatusTimestampIndex' with 'status' as HASH and 'timestamp' as RANGE.
+        response = purchase_logs_table.query(
+            IndexName="StatusTimestampIndex",  # Assuming this GSI exists
+            KeyConditionExpression=Key("status").eq(status.value),
+            ScanIndexForward=False,  # Sort by timestamp descending (newest first)
+        )
+        items = response.get("Items", [])
+        return [models.PurchaseLog(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print(f"Warning: GSI 'StatusTimestampIndex' not found. Falling back to scan for status '{status.value}'.")
+            # Fallback to scan if GSI doesn't exist (less efficient)
+            all_logs = get_all_purchase_logs()
+            return sorted([log for log in all_logs if log.status == status], key=lambda x: x.timestamp, reverse=True)
+        print(f"Error getting purchase logs by status {status.value}: {e}")
+        return []
+
+
+def update_purchase_log_status(log_id: str, new_status: models.PurchaseStatus) -> Optional[models.PurchaseLog]:
+    try:
+        response = purchase_logs_table.update_item(
+            Key={"id": log_id},
+            UpdateExpression="SET #s = :s",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={":s": new_status.value},
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.PurchaseLog(**replace_decimals(updated_attributes))
+        return None  # Log not found or update failed
+    except ClientError as e:
+        print(f"Error updating status for purchase log {log_id}: {e}")
+        return None
+
+
+def get_purchase_log_by_id(log_id: str) -> Optional[models.PurchaseLog]:
+    try:
+        response = purchase_logs_table.get_item(Key={"id": log_id})
+        item = response.get("Item")
+        if item:
+            # Ensure timestamp is parsed correctly if stored as string
+            if isinstance(item.get("timestamp"), str):
+                item["timestamp"] = datetime.fromisoformat(item["timestamp"])
+            return models.PurchaseLog(**replace_decimals(item))
+        return None
+    except ClientError as e:
+        print(f"Error getting purchase log {log_id}: {e}")
+        return None
+    except Exception as e:  # Catch potential isoformat errors
+        print(f"Error parsing purchase log {log_id} (possibly timestamp): {e}")
+        return None

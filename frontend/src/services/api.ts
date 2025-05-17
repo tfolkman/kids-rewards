@@ -73,6 +73,20 @@ export interface UserPromoteData {
     username: string;
 }
 
+// Purchase Log types
+export type PurchaseStatus = "pending" | "approved" | "rejected" | "completed";
+
+export interface PurchaseLog {
+  id: string;
+  user_id: string;
+  username: string;
+  item_id: string;
+  item_name: string;
+  points_spent: number;
+  timestamp: string; // ISO date string
+  status: PurchaseStatus;
+}
+
 // --- API Service Functions ---
 
 // Auth
@@ -99,9 +113,20 @@ export const getStoreItemById = (itemId: string) => apiClient.get<StoreItem>(`/s
 
 // Points Management
 export const awardPoints = (data: PointsAwardData) => apiClient.post<User>('/kids/award-points/', data);
-export const redeemItem = (data: RedemptionRequestData) => apiClient.post<User>('/kids/redeem-item/', data);
+export const redeemItem = (data: RedemptionRequestData) => apiClient.post<PurchaseLog>('/kids/redeem-item/', data); // Changed return type
 
 export const helloWorld = () => apiClient.get<{ message: string }>('/hello');
 export const getLeaderboard = () => apiClient.get<User[]>('/leaderboard');
+
+// Purchase History
+export const getMyPurchaseHistory = () => apiClient.get<PurchaseLog[]>('/users/me/purchase-history');
+
+// Purchase Approval (Parent)
+export interface PurchaseActionData {
+  log_id: string;
+}
+export const getPendingPurchaseRequests = () => apiClient.get<PurchaseLog[]>('/parent/purchase-requests/pending');
+export const approvePurchaseRequest = (data: PurchaseActionData) => apiClient.post<PurchaseLog>('/parent/purchase-requests/approve', data);
+export const rejectPurchaseRequest = (data: PurchaseActionData) => apiClient.post<PurchaseLog>('/parent/purchase-requests/reject', data);
 
 export default apiClient;
