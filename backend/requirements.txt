@@ -12,3 +12,7 @@ uvicorn>=0.34.2
 awslambdaric>=3.0.2
 simplejson>=3.20.1
 ruff
+
+pytest
+pytest-cov
+httpx

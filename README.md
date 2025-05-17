@@ -13,6 +13,7 @@ Before you start, make sure you have these tools installed on your machine:
 *   **Docker Desktop:** We use this to run a local version of our database (DynamoDB) and also to build and run our backend application locally via SAM CLI.
 *   **Python:** The backend is written in Python (we're using version 3.12).
 *   **pip:** Python's package installer (usually comes with Python).
+*   **uv:** (Optional, but recommended for faster dependency management in Python) Can be installed via `pip install uv`.
 *   **Node.js and npm:** Node.js is a JavaScript runtime, and npm is its package manager. We need these for the frontend. (npm usually comes with Node.js).
 *   **AWS CLI:** The Amazon Web Services Command Line Interface. We'll use this to create our local database tables.
 *   **AWS SAM CLI:** A tool from AWS that lets us run our serverless backend (Lambda functions and API Gateway) locally, just like it would run in the cloud.
@@ -123,6 +124,8 @@ The backend handles all the logic, like user logins and managing points.
         # .venv\Scripts\activate
         # Install required packages (only once, or when requirements.txt changes)
         pip install -r backend/requirements.txt
+        # Or, if you have uv installed:
+        # uv pip install -r backend/requirements.txt
         ```
     *   **Run the Seeding Script:** This command tells Python where to find your project's code (`PYTHONPATH=.`) and which database to talk to. Adjust table names if your local setup uses different ones.
         ```bash
@@ -197,6 +200,130 @@ You can open `http://localhost:3001` in your browser and start using the app!
 
 If you make changes to the backend Python code (inside the `backend` directory), you'll need to stop `sam local start-api` (Ctrl+C) and restart it. SAM will then rebuild your Docker image with the changes.
 If you make changes to the frontend React code, `npm start` will usually update your browser automatically.
+
+---
+
+## 🧪 Testing and Linting
+
+This project uses `pytest` for backend testing, React Testing Library and Playwright for frontend testing, and `Ruff` for Python linting and formatting.
+
+### Backend (Python)
+
+1.  **Activate Virtual Environment:**
+    Ensure your Python virtual environment is activated:
+    ```bash
+    # On macOS/Linux:
+    source .venv/bin/activate
+    # On Windows:
+    # .venv\Scripts\activate
+    ```
+
+2.  **Install/Update Dependencies:**
+    If you haven't already, or if `backend/requirements.txt` has changed:
+    ```bash
+    cd backend
+    pip install -r requirements.txt
+    # Or using uv:
+    # uv pip install -r requirements.txt
+    cd ..
+    ```
+
+3.  **Running Ruff (Linting & Formatting):**
+    Ruff helps maintain code quality.
+    *   **Check for issues:**
+        ```bash
+        cd backend
+        ruff check .
+        ```
+    *   **Format code:**
+        ```bash
+        ruff format .
+        ```
+    *   **VS Code Integration for Ruff:**
+        1.  Install the [Ruff VS Code extension](https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff).
+        2.  Enable "Format on Save" in VS Code settings:
+            *   Open VS Code settings (File > Preferences > Settings or `Ctrl+,`).
+            *   Search for "Format On Save" and check the box.
+            *   Search for "Default Formatter" and select "Ruff" (`charliermarsh.ruff`) as the default formatter for Python files.
+            *   You might want to add this to your workspace `.vscode/settings.json`:
+                ```json
+                {
+                  "editor.formatOnSave": true,
+                  "[python]": {
+                    "editor.defaultFormatter": "charliermarsh.ruff",
+                    "editor.codeActionsOnSave": {
+                      "source.organizeImports": true // Optional: organize imports with Ruff
+                    }
+                  }
+                }
+                ```
+        This will automatically format your Python files and organize imports when you save them.
+
+4.  **Running Backend Tests (pytest):**
+    *   Navigate to the `backend` directory:
+        ```bash
+        cd backend
+        ```
+    *   Set the `APP_SECRET_KEY` environment variable for tests. You can set this in your shell, or use a `.env` file with `python-dotenv` if you prefer (not covered here). For a one-time run:
+        ```bash
+        APP_SECRET_KEY="your_test_secret_key_at_least_32_chars_long" pytest
+        ```
+        Or, more commonly, export it for your session:
+        ```bash
+        export APP_SECRET_KEY="your_test_secret_key_at_least_32_chars_long"
+        pytest
+        ```
+        (For Windows Command Prompt: `set APP_SECRET_KEY="your_test_secret_key_at_least_32_chars_long"` then `pytest`)
+        (For Windows PowerShell: `$env:APP_SECRET_KEY="your_test_secret_key_at_least_32_chars_long"` then `pytest`)
+    *   Pytest will discover and run tests from the `tests` directory. Coverage reports (HTML and XML) will be generated in `backend/htmlcov/` and `backend/coverage.xml` respectively, as configured in `pyproject.toml`. Open `backend/htmlcov/index.html` in a browser to view the HTML report.
+
+### Frontend (React/TypeScript)
+
+1.  **Navigate to Frontend Directory:**
+    ```bash
+    cd frontend
+    ```
+
+2.  **Install/Update Dependencies:**
+    If you haven't already, or if `package.json` has changed:
+    ```bash
+    npm install
+    ```
+
+3.  **Running Unit & Integration Tests (React Testing Library):**
+    These tests are typically for individual components or small groups of components.
+    ```bash
+    npm test
+    ```
+    This will run tests in watch mode. Press `a` to run all tests once.
+
+4.  **Running End-to-End Tests (Playwright):**
+    These tests interact with your application in a real browser.
+    *   **Ensure your frontend development server is running:**
+        In a separate terminal, from the `frontend` directory:
+        ```bash
+        npm start
+        ```
+        (Usually runs on `http://localhost:3001`)
+    *   **Run Playwright tests:**
+        In another terminal, from the `frontend` directory:
+        ```bash
+        npm run e2e
+        ```
+    *   **Run Playwright tests with UI mode (for debugging):**
+        ```bash
+        npm run e2e:ui
+        ```
+    *   **Show Playwright HTML report:**
+        After tests run, an HTML report is generated in `playwright-report/`.
+        ```bash
+        npm run e2e:report
+        ```
+        This will open the report in your browser.
+
+### CI/CD Automation
+
+All these tests and linting checks are also configured to run automatically on every push or pull request to `main` or `develop` branches via GitHub Actions. See [`.github/workflows/ci-tests.yml`](./.github/workflows/ci-tests.yml).
 
 ---
 
