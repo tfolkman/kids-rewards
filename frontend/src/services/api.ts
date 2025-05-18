@@ -123,6 +123,39 @@ export interface ChoreActionRequestData {
   chore_log_id: string;
 }
 
+// Feature Request types (matching backend models and frontend pages)
+export enum RequestTypeAPI {
+  ADD_STORE_ITEM = "add_store_item",
+  ADD_CHORE = "add_chore",
+  OTHER = "other",
+}
+
+export interface FeatureRequestDetailsAPI {
+  name?: string;
+  description?: string;
+  points_cost?: number;
+  points_value?: number;
+  message?: string;
+}
+
+export interface FeatureRequestAPI {
+  id: string;
+  requester_id: string;
+  requester_username: string;
+  request_type: RequestTypeAPI;
+  details: FeatureRequestDetailsAPI;
+  status: "pending" | "approved" | "rejected";
+  created_at: string; // ISO string
+  reviewed_by_parent_id?: string;
+  reviewed_at?: string; // ISO string
+}
+
+export interface KidFeatureRequestPayloadAPI {
+  request_type: RequestTypeAPI;
+  details: FeatureRequestDetailsAPI;
+}
+
+
 // --- API Service Functions ---
 
 // Auth
@@ -185,5 +218,12 @@ export const getMyChoreHistory = () => apiClient.get<ChoreLog[]>('/chores/histor
 export const getPendingChoreSubmissionsForMyChores = () => apiClient.get<ChoreLog[]>('/parent/chore-submissions/pending');
 export const approveChoreSubmission = (data: ChoreActionRequestData) => apiClient.post<ChoreLog>('/parent/chore-submissions/approve', data);
 export const rejectChoreSubmission = (data: ChoreActionRequestData) => apiClient.post<ChoreLog>('/parent/chore-submissions/reject', data);
+
+// Feature Requests
+export const submitFeatureRequest = (payload: KidFeatureRequestPayloadAPI) => apiClient.post<FeatureRequestAPI>('/requests/', payload);
+export const getMyFeatureRequests = () => apiClient.get<FeatureRequestAPI[]>('/requests/me/');
+export const getPendingFeatureRequests = () => apiClient.get<FeatureRequestAPI[]>('/parent/requests/pending/');
+export const approveFeatureRequest = (requestId: string) => apiClient.post<FeatureRequestAPI>(`/parent/requests/${requestId}/approve/`);
+export const rejectFeatureRequest = (requestId: string) => apiClient.post<FeatureRequestAPI>(`/parent/requests/${requestId}/reject/`);
 
 export default apiClient;

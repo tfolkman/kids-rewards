@@ -169,8 +169,37 @@ The backend handles all the logic, like user logins and managing points.
                 ]" \
             --endpoint-url http://localhost:8000
         ```
+    *   **Create the `KidsRewardsRequests` table (or your configured local table name):**
+        Assuming `KidsRewardsRequests` for feature requests:
+        ```bash
+        aws dynamodb create-table \
+            --table-name KidsRewardsRequests \
+            --attribute-definitions \
+                AttributeName=id,AttributeType=S \
+                AttributeName=requester_id,AttributeType=S \
+                AttributeName=created_at,AttributeType=S \
+                AttributeName=status,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --global-secondary-indexes \
+                "[
+                    {
+                        \"IndexName\": \"RequesterIdCreatedAtGSI\",
+                        \"KeySchema\": [{\"AttributeName\":\"requester_id\",\"KeyType\":\"HASH\"}, {\"AttributeName\":\"created_at\",\"KeyType\":\"RANGE\"}],
+                        \"Projection\":{\"ProjectionType\":\"ALL\"},
+                        \"ProvisionedThroughput\":{\"ReadCapacityUnits\":2,\"WriteCapacityUnits\":2}
+                    },
+                    {
+                        \"IndexName\": \"StatusCreatedAtGSI\",
+                        \"KeySchema\": [{\"AttributeName\":\"status\",\"KeyType\":\"HASH\"}, {\"AttributeName\":\"created_at\",\"KeyType\":\"RANGE\"}],
+                        \"Projection\":{\"ProjectionType\":\"ALL\"},
+                        \"ProvisionedThroughput\":{\"ReadCapacityUnits\":2,\"WriteCapacityUnits\":2}
+                    }
+                ]" \
+            --endpoint-url http://localhost:8000
+        ```
         *   `--endpoint-url http://localhost:8000` is very important! It tells the AWS CLI to talk to your *local* database, not the real one in the cloud.
-        *   If you ever need to start fresh, you can delete these tables with `aws dynamodb delete-table --table-name YourTableName --endpoint-url http://localhost:8000` (e.g., for `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`) and then run the `create-table` commands again.
+        *   If you ever need to start fresh, you can delete these tables with `aws dynamodb delete-table --table-name YourTableName --endpoint-url http://localhost:8000` (e.g., for `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`) and then run the `create-table` commands again.
 
 3.  **Add Starting Data to Your Tables (Seeding):**
     It's helpful to have some sample users and items in the database when you're developing. We have a script for this.
@@ -192,9 +221,9 @@ The backend handles all the logic, like user logins and managing points.
         ```
     *   **Run the Seeding Script:** This command tells Python where to find your project's code (`PYTHONPATH=.`) and which database to talk to. Adjust table names if your local setup uses different ones.
         ```bash
-        PYTHONPATH=. DYNAMODB_ENDPOINT_OVERRIDE=http://localhost:8000 USERS_TABLE_NAME=KidsRewardsUsers STORE_ITEMS_TABLE_NAME=KidsRewardsStoreItems PURCHASE_LOGS_TABLE_NAME=KidsRewardsPurchaseLogs CHORES_TABLE_NAME=KidsRewardsChores CHORE_LOGS_TABLE_NAME=KidsRewardsChoreLogs python scripts/seed_dynamodb.py
+        PYTHONPATH=. DYNAMODB_ENDPOINT_OVERRIDE=http://localhost:8000 USERS_TABLE_NAME=KidsRewardsUsers STORE_ITEMS_TABLE_NAME=KidsRewardsStoreItems PURCHASE_LOGS_TABLE_NAME=KidsRewardsPurchaseLogs CHORES_TABLE_NAME=KidsRewardsChores CHORE_LOGS_TABLE_NAME=KidsRewardsChoreLogs REQUESTS_TABLE_NAME=KidsRewardsRequests python scripts/seed_dynamodb.py --environment local
         ```
-        This will add users like "testparent" and "testkid" to your local database. (Note: The seed script may need updating to populate chore tables if desired).
+        This will add users like "testparent" and "testkid" to your local database. (Note: The seed script may need updating to populate chore and request tables if desired).
 
 4.  **Prepare and Run the Backend Application (SAM Local):**
     Now we'll run the actual backend code using AWS SAM CLI. Since our Lambda is packaged as a Docker image, SAM CLI will build this image locally.
@@ -206,7 +235,7 @@ The backend handles all the logic, like user logins and managing points.
         ```
     *   **Set up Local Environment File:** Your backend needs a special file called `local-env.json` to know how to connect to your local database and other settings. We provide an example file called `local-env.example.json`.
         *   In your project's main folder (`kids_rewards`), make a copy of `local-env.example.json` and name the copy `local-env.json`.
-        *   Ensure the table names in `local-env.json` match what you created locally (e.g., `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`).
+        *   Ensure the table names in `local-env.json` match what you created locally (e.g., `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`).
     *   **Start the Local API:** This command runs your backend.
         *   It uses your `backend/template.yaml` to understand your function configuration (including the Dockerfile location).
         *   `local-env.json` provides environment variables to the running container.
@@ -439,4 +468,4 @@ Before the GitHub Actions workflow can successfully deploy to production, you mu
 *   **Complete AWS Setup:** Ensure the IAM OIDC Role, GitHub Secrets (`AWS_ROLE_TO_ASSUME`, `SAM_S3_BUCKET_NAME`), and ECR repository are correctly set up as described in the "Prerequisites for Production Deployment" section.
 *   **SAM S3 Bucket:** The `SAM_S3_BUCKET_NAME` secret should point to an S3 bucket you own, used by `sam deploy` for packaging.
 *   **Amplify Configuration:** Double-check your AWS Amplify settings to ensure it's correctly building from the `main` branch and that its environment variables point to the production API Gateway endpoint. The API Gateway endpoint URL can be found in the outputs of your SAM stack after a successful deployment.
-*   **Local Table Names:** The local setup instructions for creating DynamoDB tables and seeding use the default names (`KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`). Verify these against your `backend/template.yaml` (Conditions and Mappings for local environment) and `local-env.json` to ensure consistency if you've customized them.
+*   **Local Table Names:** The local setup instructions for creating DynamoDB tables and seeding use the default names (`KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`). Verify these against your `backend/template.yaml` (Conditions and Mappings for local environment) and `local-env.json` to ensure consistency if you've customized them.
