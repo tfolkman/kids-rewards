@@ -163,3 +163,40 @@ class ChoreLogCreate(ChoreLogBase):
 
 class ChoreLog(ChoreLogBase):
     id: str
+
+
+class RequestType(str, Enum):
+    ADD_STORE_ITEM = "add_store_item"
+    ADD_CHORE = "add_chore"
+    OTHER = "other"
+
+
+class RequestStatus(str, Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class RequestBase(BaseModel):
+    requester_id: str
+    requester_username: str  # Denormalized for easier display
+    request_type: RequestType
+    details: dict  # Flexible field for request specifics
+    # Example for ADD_STORE_ITEM: {"name": "...", "description": "...", "points_cost": ...}
+    # Example for ADD_CHORE: {"name": "...", "description": "...", "points_value": ...}
+    # Example for OTHER: {"message": "..."}
+    status: RequestStatus = RequestStatus.PENDING
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        from_attributes = True
+
+
+class RequestCreate(RequestBase):
+    pass
+
+
+class Request(RequestBase):
+    id: str
+    reviewed_by_parent_id: Optional[str] = None
+    reviewed_at: Optional[datetime] = None

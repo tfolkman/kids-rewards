@@ -22,6 +22,7 @@ STORE_ITEMS_TABLE_NAME = os.getenv("STORE_ITEMS_TABLE_NAME", "KidsRewardsStoreIt
 PURCHASE_LOGS_TABLE_NAME = os.getenv("PURCHASE_LOGS_TABLE_NAME", "KidsRewardsPurchaseLogs")
 CHORES_TABLE_NAME = os.getenv("CHORES_TABLE_NAME", "KidsRewardsChores")
 CHORE_LOGS_TABLE_NAME = os.getenv("CHORE_LOGS_TABLE_NAME", "KidsRewardsChoreLogs")
+REQUESTS_TABLE_NAME = os.getenv("REQUESTS_TABLE_NAME", "KidsRewardsRequests")  # New table for requests
 
 if DYNAMODB_ENDPOINT_OVERRIDE:
     dynamodb = boto3.resource("dynamodb", endpoint_url=DYNAMODB_ENDPOINT_OVERRIDE, region_name=AWS_REGION)
@@ -34,6 +35,7 @@ store_items_table = dynamodb.Table(STORE_ITEMS_TABLE_NAME)
 purchase_logs_table = dynamodb.Table(PURCHASE_LOGS_TABLE_NAME)
 chores_table = dynamodb.Table(CHORES_TABLE_NAME)
 chore_logs_table = dynamodb.Table(CHORE_LOGS_TABLE_NAME)
+requests_table = dynamodb.Table(REQUESTS_TABLE_NAME)  # New table resource for requests
 
 
 # Helper to convert Decimals from DynamoDB to int/float for Pydantic models
@@ -48,6 +50,25 @@ def replace_decimals(obj: Any) -> Any:
         else:
             return float(obj)
     return obj
+
+
+# Helper to prepare Python dicts for DynamoDB (convert numbers to Decimal, handle None)
+def prepare_item_for_dynamodb(item: Any) -> Any:
+    if isinstance(item, dict):
+        new_dict = {}
+        for k, v in item.items():
+            if v is not None:  # Skip None values, DynamoDB doesn't store them well unless explicitly needed
+                new_dict[k] = prepare_item_for_dynamodb(v)
+        return new_dict
+    elif isinstance(item, list):
+        new_list = []
+        for i in item:
+            if i is not None:  # Optionally skip None values in lists too
+                new_list.append(prepare_item_for_dynamodb(i))
+        return new_list
+    elif isinstance(item, (int, float)):
+        return Decimal(str(item))
+    return item  # For strings, booleans, Decimals, etc.
 
 
 # --- User CRUD ---
@@ -797,3 +818,181 @@ def get_all_chore_logs_scan_fallback() -> List[models.ChoreLog]:  # noqa: UP006
         # It might be beneficial to add 'created_by_parent_id' to ChoreLog items
         # to simplify queries like get_chore_logs_by_status_for_parent.
         # This would be denormalization. If added, update ChoreLog model and creation logic.
+
+
+# --- Request CRUD ---
+
+
+def create_request(request_in: models.RequestCreate) -> models.Request:
+    request_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow()
+
+    request_data = {
+        "id": request_id,
+        "requester_id": request_in.requester_id,
+        "requester_username": request_in.requester_username,
+        "request_type": request_in.request_type.value,
+        "details": request_in.details,  # Stored as a map in DynamoDB
+        "status": request_in.status.value,
+        "created_at": timestamp.isoformat(),
+        "reviewed_by_parent_id": None,
+        "reviewed_at": None,
+    }
+    # Ensure details are suitable for DynamoDB (e.g., numbers are Decimal if they exist)
+    # For simplicity, assuming details dict is already prepared by the caller.
+    # If details contain numbers, they should be converted to Decimal before put_item.
+    # Example: if "points_cost" in request_data["details"]:
+    # request_data["details"]["points_cost"] = Decimal(request_data["details"]["points_cost"])
+
+    prepared_request_data = prepare_item_for_dynamodb(request_data)
+
+    try:
+        requests_table.put_item(Item=prepared_request_data)
+        # Construct model for response
+        return models.Request(
+            id=request_id,
+            requester_id=request_in.requester_id,
+            requester_username=request_in.requester_username,
+            request_type=request_in.request_type,
+            details=request_in.details,
+            status=request_in.status,
+            created_at=timestamp,
+            reviewed_by_parent_id=None,
+            reviewed_at=None,
+        )
+    except ClientError as e:
+        error_log_message = f"DynamoDB ClientError creating request for user {request_in.requester_username}. "
+        error_log_message += f"Attempted item: {prepared_request_data}. Error details: {e!s}. "
+        if hasattr(e, "response") and e.response and "Error" in e.response:
+            error_log_message += (
+                f"DynamoDB Error Code: {e.response['Error'].get('Code')}, Message: {e.response['Error'].get('Message')}"
+            )
+        print(error_log_message)
+        raise HTTPException(
+            status_code=500,
+            detail="Could not create request in database. Please check backend logs for specific DynamoDB error.",
+        ) from e
+
+
+def get_request_by_id(request_id: str) -> Optional[models.Request]:
+    try:
+        response = requests_table.get_item(Key={"id": request_id})
+        item = response.get("Item")
+        if item:
+            return models.Request(**replace_decimals(item))
+        return None
+    except ClientError as e:
+        print(f"Error getting request {request_id}: {e}")
+        return None
+
+
+def get_requests_by_status(status: models.RequestStatus) -> List[models.Request]:  # noqa: UP006
+    try:
+        # This scan can be inefficient. Consider a GSI on 'status' and 'created_at' for production.
+        # GSI: IndexName='RequestStatusIndex', KeySchema=[{AttributeName: 'status', KeyType: 'HASH'}, {AttributeName: 'created_at', KeyType: 'RANGE'}]
+        response = requests_table.scan(FilterExpression=boto3.dynamodb.conditions.Attr("status").eq(status.value))
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = requests_table.scan(
+                FilterExpression=boto3.dynamodb.conditions.Attr("status").eq(status.value),
+                ExclusiveStartKey=response["LastEvaluatedKey"],
+            )
+            items.extend(response.get("Items", []))
+
+        parsed_items = [models.Request(**replace_decimals(item)) for item in items]
+        parsed_items.sort(key=lambda x: x.created_at, reverse=True)  # Sort newest first
+        return parsed_items
+    except ClientError as e:
+        print(f"Error scanning requests by status {status.value}: {e}")
+        return []
+
+
+def get_requests_by_requester_id(requester_id: str) -> List[models.Request]:  # noqa: UP006
+    try:
+        # This scan can be inefficient. Consider a GSI on 'requester_id' and 'created_at' for production.
+        # GSI: IndexName='RequesterIdIndex', KeySchema=[{AttributeName: 'requester_id', KeyType: 'HASH'}, {AttributeName: 'created_at', KeyType: 'RANGE'}]
+        response = requests_table.scan(FilterExpression=boto3.dynamodb.conditions.Attr("requester_id").eq(requester_id))
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = requests_table.scan(
+                FilterExpression=boto3.dynamodb.conditions.Attr("requester_id").eq(requester_id),
+                ExclusiveStartKey=response["LastEvaluatedKey"],
+            )
+            items.extend(response.get("Items", []))
+
+        parsed_items = [models.Request(**replace_decimals(item)) for item in items]
+        parsed_items.sort(key=lambda x: x.created_at, reverse=True)  # Sort newest first
+        return parsed_items
+    except ClientError as e:
+        print(f"Error scanning requests by requester_id {requester_id}: {e}")
+        return []
+
+
+def update_request_status(
+    request_id: str, new_status: models.RequestStatus, parent_id: str
+) -> Optional[models.Request]:
+    request_to_update = get_request_by_id(request_id)
+    if not request_to_update:
+        return None  # Request not found
+
+    if request_to_update.status == new_status:  # No change needed
+        return request_to_update
+
+    timestamp = datetime.utcnow()
+    update_expression = "SET #s = :s, reviewed_by_parent_id = :pid, reviewed_at = :rat"
+    expression_attribute_values = {
+        ":s": new_status.value,
+        ":pid": parent_id,
+        ":rat": timestamp.isoformat(),
+    }
+    expression_attribute_names = {"#s": "status"}
+
+    try:
+        response = requests_table.update_item(
+            Key={"id": request_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=expression_attribute_names,
+            ExpressionAttributeValues=expression_attribute_values,
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if not updated_attributes:
+            return None  # Should not happen if update is successful
+
+        updated_request = models.Request(**replace_decimals(updated_attributes))
+
+        # If approved, and it's an ADD_STORE_ITEM or ADD_CHORE request, create the item/chore.
+        if new_status == models.RequestStatus.APPROVED:
+            if updated_request.request_type == models.RequestType.ADD_STORE_ITEM:
+                details = updated_request.details
+                store_item_create = models.StoreItemCreate(
+                    name=details.get("name"),
+                    description=details.get("description"),
+                    points_cost=int(details.get("points_cost", 0)),  # Ensure points_cost is int
+                )
+                create_store_item(item_in=store_item_create)  # Assuming parent_id is not needed for create_store_item
+                print(f"Store item '{store_item_create.name}' created from approved request {request_id}.")
+
+            elif updated_request.request_type == models.RequestType.ADD_CHORE:
+                details = updated_request.details
+                chore_create = models.ChoreCreate(
+                    name=details.get("name"),
+                    description=details.get("description"),
+                    points_value=int(details.get("points_value", 0)),  # Ensure points_value is int
+                )
+                # create_chore requires parent_id, which we have from the function argument
+                create_chore(chore_in=chore_create, parent_id=parent_id)
+                print(f"Chore '{chore_create.name}' created from approved request {request_id}.")
+
+        return updated_request
+    except ClientError as e:
+        print(f"Error updating status for request {request_id}: {e}")
+        return None
+    except Exception as e:  # Catch other potential errors like Pydantic validation from create_store_item/create_chore
+        print(f"Error processing post-approval for request {request_id}: {e}")
+        # The request status itself was updated, but the secondary action (creating item/chore) might have failed.
+        # Depending on desired transactional behavior, you might want to revert the status or log this specifically.
+        # For now, return the updated request object, but log the error.
+        if "updated_request" in locals():
+            return updated_request
+        return None

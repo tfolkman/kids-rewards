@@ -47,6 +47,7 @@ Resources:
           PURCHASE_LOGS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPurchaseLogs", !Sub "${TableNamePrefix}KidsRewardsPurchaseLogs"]
           CHORES_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChores", !Sub "${TableNamePrefix}KidsRewardsChores"]
           CHORE_LOGS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChoreLogs", !Sub "${TableNamePrefix}KidsRewardsChoreLogs"]
+          REQUESTS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsRequests", !Sub "${TableNamePrefix}KidsRewardsRequests"] # New Table Env Var
           APP_SECRET_KEY: !Ref AppSecret
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
@@ -204,6 +205,50 @@ Resources:
             - AttributeName: status
               KeyType: HASH
             - AttributeName: submitted_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 2
+            WriteCapacityUnits: 2
+    DeletionPolicy: Retain
+
+  KidsRewardsRequestsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "KidsRewardsRequests", !Sub "${TableNamePrefix}KidsRewardsRequests"]
+      AttributeDefinitions:
+        - AttributeName: id # Primary Key
+          AttributeType: S
+        - AttributeName: requester_id # For GSI
+          AttributeType: S
+        - AttributeName: created_at # For GSI sort key
+          AttributeType: S
+        - AttributeName: status # For GSI
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      GlobalSecondaryIndexes:
+        - IndexName: RequesterIdCreatedAtGSI
+          KeySchema:
+            - AttributeName: requester_id
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 2
+            WriteCapacityUnits: 2
+        - IndexName: StatusCreatedAtGSI
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: created_at
               KeyType: RANGE
           Projection:
             ProjectionType: ALL

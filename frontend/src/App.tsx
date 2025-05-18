@@ -29,7 +29,7 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { Notifications } from '@mantine/notifications'; // Import Notifications
-import { IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, IconReceipt, IconHourglassHigh, IconClipboardList, IconHistory, IconChecklist } from '@tabler/icons-react'; // Added chore icons
+import { IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, IconReceipt, IconHourglassHigh, IconClipboardList, IconHistory, IconChecklist, IconMessagePlus, IconListCheck } from '@tabler/icons-react'; // Added chore and request icons
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css'; // Import notifications styles
 import './App.css';
@@ -44,6 +44,8 @@ import PendingRequestsPage from './pages/PendingRequestsPage'; // Import Pending
 import ManageChoresPage from './pages/ManageChoresPage';
 import ChoresPage from './pages/ChoresPage';
 import ChoreHistoryPage from './pages/ChoreHistoryPage';
+import MakeRequestPage from './pages/MakeRequestPage'; // Import MakeRequestPage
+import ManageRequestsPage from './pages/ManageRequestsPage'; // Import ManageRequestsPage
 
 // --- Context for Auth ---
 interface AuthContextType {
@@ -488,6 +490,18 @@ const App: React.FC = () => {
                                     if (mobileOpened) toggleMobile();
                                 }}
                             />
+                            <NavLink
+                                key="Make Request"
+                                label="Make a Request"
+                                leftSection={<IconMessagePlus size="1rem" stroke={1.5} />}
+                                component={RouterLink}
+                                to="/make-request"
+                                active={location.pathname === "/make-request"}
+                                onClick={() => {
+                                    navigate("/make-request");
+                                    if (mobileOpened) toggleMobile();
+                                }}
+                            />
                         </>
                     )}
                     {currentUser.role === 'parent' && (
@@ -525,6 +539,17 @@ const App: React.FC = () => {
                                     if (mobileOpened) toggleMobile();
                                 }}
                             />
+                            <NavLink
+                                label="Manage Feature Requests"
+                                leftSection={<IconListCheck size="1rem" stroke={1.5} />}
+                                component={RouterLink}
+                                to="/manage-requests"
+                                active={location.pathname === "/manage-requests"}
+                                onClick={() => {
+                                    navigate("/manage-requests");
+                                    if (mobileOpened) toggleMobile();
+                                }}
+                            />
                         </>
                     )}
                 </AppShell.Navbar>
@@ -545,6 +570,8 @@ const App: React.FC = () => {
                         {/* Kid Routes */}
                         <Route path="/chores" element={<ChoresPage />} />
                         <Route path="/chores/history" element={<ChoreHistoryPage />} />
+                        <Route path="/make-request" element={<MakeRequestPage />} /> {/* Route for kids to make requests */}
+                        <Route path="/manage-requests" element={<ManageRequestsPage />} /> {/* Route for parents to manage requests */}
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>

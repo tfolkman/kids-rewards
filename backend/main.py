@@ -527,3 +527,112 @@ async def reject_purchase_request(request_data: PurchaseActionRequest):
         )
 
     return rejected_log
+
+
+# --- Feature Request Endpoints ---
+
+
+class KidFeatureRequestPayload(models.BaseModel):
+    request_type: models.RequestType
+    details: dict  # Specifics of the request, e.g., {"name": "New Item", "points_cost": 100}
+
+
+@app.post("/requests/", response_model=models.Request, status_code=status.HTTP_201_CREATED)
+async def create_feature_request(
+    payload: KidFeatureRequestPayload,
+    current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+):
+    """
+    Kid creates a new feature request (e.g., add store item, add chore, other).
+    """
+    logger.info(
+        f"User {current_kid.username} (ID: {current_kid.id}) creating feature request of type {payload.request_type.value} with details: {payload.details}"
+    )
+    request_create_data = models.RequestCreate(
+        requester_id=current_kid.id,
+        requester_username=current_kid.username,
+        request_type=payload.request_type,
+        details=payload.details,
+        # status defaults to PENDING in RequestBase model
+    )
+    created_request = crud.create_request(request_in=request_create_data)
+    if not created_request:
+        logger.error(f"Failed to create feature request for user {current_kid.username}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not create feature request."
+        )
+    logger.info(f"Feature request {created_request.id} created successfully for user {current_kid.username}")
+    return created_request
+
+
+@app.get("/requests/me/", response_model=List[models.Request])  # noqa: UP006
+async def get_my_feature_requests(
+    current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+):
+    """
+    Kid retrieves their own submitted feature requests.
+    """
+    logger.info(f"Fetching feature requests for user {current_kid.username} (ID: {current_kid.id})")
+    requests = crud.get_requests_by_requester_id(requester_id=current_kid.id)
+    logger.info(f"Found {len(requests)} feature requests for user {current_kid.username}")
+    return requests
+
+
+@app.get("/parent/requests/pending/", response_model=List[models.Request])  # noqa: UP006
+async def get_pending_feature_requests(
+    current_parent: models.User = Depends(get_current_parent_user),  # Ensures only parents can access # noqa: B008
+):
+    """
+    Parent retrieves all feature requests with 'pending' status.
+    """
+    logger.info(f"Parent {current_parent.username} fetching pending feature requests.")
+    pending_requests = crud.get_requests_by_status(status=models.RequestStatus.PENDING)
+    logger.info(f"Found {len(pending_requests)} pending feature requests.")
+    return pending_requests
+
+
+@app.post("/parent/requests/{request_id}/approve/", response_model=models.Request)
+async def approve_feature_request(
+    request_id: str,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Parent approves a feature request.
+    If the request type is ADD_STORE_ITEM or ADD_CHORE, the item/chore is created.
+    """
+    logger.info(f"Parent {current_parent.username} attempting to approve request {request_id}")
+    updated_request = crud.update_request_status(
+        request_id=request_id, new_status=models.RequestStatus.APPROVED, parent_id=current_parent.id
+    )
+    if not updated_request:
+        logger.warning(
+            f"Failed to approve request {request_id} by parent {current_parent.username}. Request not found or update failed."
+        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found or could not be approved.")
+    logger.info(
+        f"Request {request_id} approved successfully by parent {current_parent.username}. New status: {updated_request.status.value}"
+    )
+    return updated_request
+
+
+@app.post("/parent/requests/{request_id}/reject/", response_model=models.Request)
+async def reject_feature_request(
+    request_id: str,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Parent rejects a feature request.
+    """
+    logger.info(f"Parent {current_parent.username} attempting to reject request {request_id}")
+    updated_request = crud.update_request_status(
+        request_id=request_id, new_status=models.RequestStatus.REJECTED, parent_id=current_parent.id
+    )
+    if not updated_request:
+        logger.warning(
+            f"Failed to reject request {request_id} by parent {current_parent.username}. Request not found or update failed."
+        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found or could not be rejected.")
+    logger.info(
+        f"Request {request_id} rejected successfully by parent {current_parent.username}. New status: {updated_request.status.value}"
+    )
+    return updated_request
