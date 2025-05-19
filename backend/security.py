@@ -3,8 +3,13 @@ import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from dotenv import load_dotenv
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

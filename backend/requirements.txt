@@ -16,3 +16,6 @@ ruff
 pytest
 pytest-cov
 httpx
+google-generativeai
+python-dotenv
+python-dotenv

@@ -226,4 +226,7 @@ export const getPendingFeatureRequests = () => apiClient.get<FeatureRequestAPI[]
 export const approveFeatureRequest = (requestId: string) => apiClient.post<FeatureRequestAPI>(`/parent/requests/${requestId}/approve/`);
 export const rejectFeatureRequest = (requestId: string) => apiClient.post<FeatureRequestAPI>(`/parent/requests/${requestId}/reject/`);
 
+// Gemini API
+export const askGemini = (prompt: string, question: string) => apiClient.post<{ answer: string }>('/gemini/ask', { prompt, question });
+
 export default apiClient;
