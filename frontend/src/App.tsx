@@ -25,7 +25,8 @@ import {
     Badge,
     useMantineTheme,
     LoadingOverlay,
-    MantineTheme
+    MantineTheme,
+    Modal
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { Notifications } from '@mantine/notifications'; // Import Notifications
@@ -393,15 +394,115 @@ const App: React.FC = () => {
     const { currentUser, logout } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
+    const [geminiModalOpened, setGeminiModalOpened] = useState(false);
+    const [question, setQuestion] = useState('');
+    const [answer, setAnswer] = useState('');
 
     const handleLogout = () => {
         logout();
+    };
+
+    const handleSubmit = async () => {
+        console.log('Question:', question);
+        setAnswer('Analyzing your request...'); // Provide immediate feedback
+        try {
+            const prompt = `Analyze the following user request and respond ONLY with the requested JSON. Do NOT include any other text, explanations, or conversational filler. Respond in the format: ###JSON###{...}###JSON###.
+If the user is asking to add a new shop item:
+1.  Identify the item name.
+2.  If the user mentions a specific price or a link to a product page, extract the price in US dollars.
+3.  If the user mentions a general item (e.g., "a new Lego set", "a Barbie doll"), try to determine a common or average price for such an item in US dollars. If you find multiple prices, calculate their average. For subscription-based items (e.g., "Spotify subscription", "Netflix subscription") where different tiers exist, if the user does not specify a tier, assume they mean the standard/basic individual monthly plan and use its current price in US dollars. The price should be a number.
+4.  Respond in a JSON format with "action": "add_shop_item", "item_name": "the name of the item", and "usd_price": the determined price in US dollars as a number.
+If the user is asking a general question, respond in a JSON format with "action": "answer", and "answer": "the answer to the question".
+If you cannot understand the request or cannot determine an item name or a valid USD price for a shop item request, respond with "action": "unknown".
+
+User request: ${question}`;
+            const response = await api.askGemini(prompt, question);
+            
+            // Extract JSON from the response
+            // Attempt to extract JSON from the response by finding the first '{' and last '}'
+            const responseText = response.data.answer;
+            const firstBracket = responseText.indexOf('{');
+            const lastBracket = responseText.lastIndexOf('}');
+            let geminiResponse = null; // Initialize to null
+
+            if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
+                const jsonString = responseText.substring(firstBracket, lastBracket + 1);
+                try {
+                    geminiResponse = JSON.parse(jsonString);
+                } catch (parseError) {
+                    console.error('Failed to parse extracted string as JSON:', parseError);
+                    // If parsing fails, geminiResponse remains null
+                }
+            }
+
+            // If geminiResponse is null, it means JSON extraction/parsing failed
+            if (!geminiResponse) {
+                console.error('Could not find or parse JSON object in Gemini response:', responseText);
+                setAnswer(`Could not process your request. Gemini's response:\n\n${responseText}`);
+                return; // Exit the function
+            }
+
+            // If geminiResponse is not null, proceed with action handling
+            if (geminiResponse.action === 'add_shop_item') {
+                if (geminiResponse.item_name && typeof geminiResponse.usd_price === 'number' && geminiResponse.usd_price > 0) {
+                    const pointsCost = Math.round(geminiResponse.usd_price * 35);
+                    setAnswer(`Requesting to add "${geminiResponse.item_name}" (USD ${geminiResponse.usd_price.toFixed(2)}) for ${pointsCost} points... This will require parental approval.`);
+                    try {
+                        // Use submitFeatureRequest instead of createStoreItem
+                        await api.submitFeatureRequest({
+                            request_type: api.RequestTypeAPI.ADD_STORE_ITEM,
+                            details: {
+                                name: geminiResponse.item_name,
+                                points_cost: pointsCost,
+                                description: `Requested based on USD price: $${geminiResponse.usd_price.toFixed(2)}`, // Optional: add price context
+                            }
+                        });
+                        setAnswer(`Successfully submitted a request to add "${geminiResponse.item_name}" for ${pointsCost} points. A parent will need to approve it.`);
+                    } catch (createError) {
+                        console.error('Error submitting feature request for store item:', createError);
+                        setAnswer(`Error submitting request to add "${geminiResponse.item_name}".`);
+                    }
+                } else {
+                    console.error('Gemini response for add_shop_item missing required fields or invalid usd_price:', geminiResponse);
+                    setAnswer('Could not extract item name or a valid USD price from your request. Please check the console for details from Gemini.');
+                }
+            } else if (geminiResponse && geminiResponse.action === 'answer') {
+                setAnswer(geminiResponse.answer);
+            } else {
+                // If JSON was not found, or action was unknown, display the raw response
+                setAnswer(`Could not process your request. Gemini's response:\n\n${responseText}`);
+            }
+
+            if (geminiResponse.action === 'add_shop_item') {
+                if (geminiResponse.item_name && geminiResponse.points_cost !== undefined) {
+                    setAnswer(`Requesting to add "${geminiResponse.item_name}" for ${geminiResponse.points_cost} points...`);
+                    try {
+                        await api.createStoreItem({ name: geminiResponse.item_name, points_cost: geminiResponse.points_cost });
+                        setAnswer(`Successfully requested to add "${geminiResponse.item_name}". A parent will need to approve it.`);
+                    } catch (createError) {
+                        console.error('Error creating store item:', createError);
+                        setAnswer(`Error requesting to add "${geminiResponse.item_name}".`);
+                    }
+                } else {
+                    setAnswer('Could not extract item name or points cost from your request.');
+                }
+            } else if (geminiResponse.action === 'answer') {
+                setAnswer(geminiResponse.answer);
+            } else {
+                setAnswer('Could not understand your request. Please try rephrasing.');
+            }
+
+        } catch (error) {
+            console.error('Error asking Gemini:', error);
+            setAnswer('Error communicating with Gemini. Please check the console for details.');
+        }
     };
     
     const navLinks = [
         { icon: IconHome, label: 'Dashboard', to: '/' },
         { icon: IconShoppingCart, label: 'Store', to: '/store' },
         { icon: IconListNumbers, label: 'Leaderboard', to: '/leaderboard' },
+        { icon: IconMessagePlus, label: 'Gemini', to: '/gemini' },
         // Purchase History will be added conditionally below for kids
     ];
 
@@ -444,10 +545,14 @@ const App: React.FC = () => {
                             label={link.label}
                             leftSection={<link.icon size="1rem" stroke={1.5} />}
                             component={RouterLink}
-                            to={link.to}
+                            to={link.to} // Use the link's 'to' prop for navigation
                             active={location.pathname === link.to}
-                            onClick={() => {
-                                navigate(link.to);
+                            onClick={(e) => {
+                                if (link.label === 'Gemini') {
+                                    e.preventDefault(); // Prevent default navigation only for Gemini link
+                                    setGeminiModalOpened(true);
+                                }
+                                // For all links, close the mobile menu if it's open
                                 if (mobileOpened) toggleMobile();
                             }}
                         />
@@ -554,6 +659,27 @@ const App: React.FC = () => {
                     )}
                 </AppShell.Navbar>
             )}
+
+            <Modal
+                opened={geminiModalOpened}
+                onClose={() => setGeminiModalOpened(false)}
+                title="Ask Gemini"
+            >
+                <Stack>
+                    <TextInput
+                        label="Question"
+                        placeholder="Ask a question"
+                        value={question}
+                        onChange={(e) => setQuestion(e.currentTarget.value)}
+                    />
+                    {answer && (
+                        <Text mt="md">
+                            <strong>Answer:</strong> {answer}
+                        </Text>
+                    )}
+                    <Button onClick={() => handleSubmit()}>Submit</Button>
+                </Stack>
+            </Modal>
 
             <AppShell.Main>
                 <Routes>

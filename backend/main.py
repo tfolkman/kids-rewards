@@ -1,9 +1,15 @@
 # Assuming main.py, crud.py, models.py, security.py are all in LAMBDA_TASK_ROOT (/var/task)
 # and __init__.py makes this directory a package.
 # For Lambda containers, often direct imports work if LAMBDA_TASK_ROOT is in sys.path.
+import asyncio
 import logging
 from datetime import timedelta
 from typing import List  # noqa: UP035
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv()
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -443,6 +449,86 @@ async def read_my_purchase_history(current_user: models.User = Depends(get_curre
     # or by client-side sort in get_all_purchase_logs fallback.
     history = crud.get_purchase_logs_by_user_id(user_id=current_user.id)
     return history
+
+
+# --- Gemini API Endpoint ---
+import google.generativeai as genai
+from pydantic import BaseModel
+
+
+class GeminiRequest(BaseModel):
+    prompt: str
+    question: str
+
+
+class GeminiResponse(BaseModel):
+    answer: str
+
+
+GEMINI_API_KEY = "AIzaSyDxtt9DIaj9Gvp1MGxwKEa4aTyfV0XG5lM"
+
+
+import os
+
+
+@app.post("/gemini/ask", response_model=GeminiResponse)
+async def ask_gemini(request: GeminiRequest):
+    logger.info("Received request to ask Gemini")
+    try:
+        if not GEMINI_API_KEY:
+            raise ValueError("Gemini API key is not set.")
+        os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
+        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+
+        # Combine prompt and question
+        full_request = f"{request.prompt}\n\n{request.question}"
+
+        logger.info(f"Asking Gemini: {full_request}")
+        response = model.generate_content(full_request)
+        logger.info(f"Gemini response: {response.text}")
+        return GeminiResponse(answer=response.text)
+    except Exception as e:
+        logger.error(f"Error asking Gemini: {type(e).__name__}: {e}")
+        return GeminiResponse(answer=f"Error: {type(e).__name__}: {e}")
+
+
+async def test_gemini_api():
+    try:
+        # Hardcoding API key for testing purposes
+        test_api_key = "AIzaSyDxtt9DIaj9Gvp1MGxwKEa4aTyfV0XG5lM"
+        if not test_api_key:
+            print("Gemini API key is not set.")
+            return
+        os.environ["GOOGLE_API_KEY"] = test_api_key
+        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+        model = genai.GenerativeModel("gemini-1.5-flash-latest")
+        test_question = "What is the capital of France?"
+        print(f"Asking Gemini (test): {test_question}")
+        response = model.generate_content(test_question)
+        print(f"Gemini response (test): {response.text}")
+    except Exception as e:
+        print(f"Error during Gemini API test: {type(e).__name__}: {e}")
+
+
+if __name__ == "__main__":
+    asyncio.run(test_gemini_api())
+
+
+async def test_gemini_api():
+    try:
+        if not GEMINI_API_KEY:
+            print("Gemini API key is not set.")
+            return
+        os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
+        genai.configure(api_key=os.environ["GOOGLE_API_KEY"])
+        model = genai.GenerativeModel("gemini-pro")
+        test_question = "What is the capital of France?"
+        print(f"Asking Gemini (test): {test_question}")
+        response = model.generate_content(test_question)
+        print(f"Gemini response (test): {response.text}")
+    except Exception as e:
+        print(f"Error during Gemini API test: {type(e).__name__}: {e}")
 
 
 # --- Purchase Approval Endpoints (Parent Only) ---

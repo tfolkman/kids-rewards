@@ -2,6 +2,11 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from dotenv import load_dotenv
+import os
+
+# Load environment variables from .env file
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
