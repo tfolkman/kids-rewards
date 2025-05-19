@@ -3,23 +3,24 @@
 # For Lambda containers, often direct imports work if LAMBDA_TASK_ROOT is in sys.path.
 import asyncio
 import logging
+import os
 from datetime import timedelta
 from typing import List  # noqa: UP035
+
 from dotenv import load_dotenv
-import os
 
 # Load environment variables from .env file
 load_dotenv()
 
-from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from mangum import Mangum  # Import Mangum
+from fastapi import Depends, FastAPI, HTTPException, status  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm  # noqa: E402
+from mangum import Mangum  # Import Mangum # noqa: E402
 
-import crud
-import models
-import security
-from models import User
+import crud  # noqa: E402
+import models  # noqa: E402
+import security  # noqa: E402
+from models import User  # noqa: E402
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -452,8 +453,8 @@ async def read_my_purchase_history(current_user: models.User = Depends(get_curre
 
 
 # --- Gemini API Endpoint ---
-import google.generativeai as genai
-from pydantic import BaseModel
+import google.generativeai as genai  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
 
 
 class GeminiRequest(BaseModel):
@@ -466,9 +467,6 @@ class GeminiResponse(BaseModel):
 
 
 GEMINI_API_KEY = "AIzaSyDxtt9DIaj9Gvp1MGxwKEa4aTyfV0XG5lM"
-
-
-import os
 
 
 @app.post("/gemini/ask", response_model=GeminiResponse)
