@@ -403,7 +403,8 @@ const App: React.FC = () => {
     };
 
     const handleSubmit = async () => {
-        console.log('Question:', question);
+        console.log('handleSubmit: Start. Question:', question);
+        console.log('handleSubmit: Setting answer to "Analyzing your request..."');
         setAnswer('Analyzing your request...'); // Provide immediate feedback
         try {
             const prompt = `Analyze the following user request and respond ONLY with the requested JSON. Do NOT include any other text, explanations, or conversational filler. Respond in the format: ###JSON###{...}###JSON###.
@@ -418,84 +419,87 @@ If you cannot understand the request or cannot determine an item name or a valid
 User request: ${question}`;
             const response = await api.askGemini(prompt, question);
             
-            // Extract JSON from the response
-            // Attempt to extract JSON from the response by finding the first '{' and last '}'
             const responseText = response.data.answer;
             const firstBracket = responseText.indexOf('{');
             const lastBracket = responseText.lastIndexOf('}');
-            let geminiResponse = null; // Initialize to null
+            let geminiResponse = null; 
 
             if (firstBracket !== -1 && lastBracket !== -1 && lastBracket > firstBracket) {
                 const jsonString = responseText.substring(firstBracket, lastBracket + 1);
                 try {
                     geminiResponse = JSON.parse(jsonString);
                 } catch (parseError) {
-                    console.error('Failed to parse extracted string as JSON:', parseError);
-                    // If parsing fails, geminiResponse remains null
+                    console.error('handleSubmit: Failed to parse extracted string as JSON:', parseError, 'String was:', jsonString);
                 }
             }
+            console.log('handleSubmit: Parsed Gemini response object:', geminiResponse);
 
-            // If geminiResponse is null, it means JSON extraction/parsing failed
             if (!geminiResponse) {
-                console.error('Could not find or parse JSON object in Gemini response:', responseText);
-                setAnswer(`Could not process your request. Gemini's response:\n\n${responseText}`);
-                return; // Exit the function
+                console.error('handleSubmit: Could not find or parse JSON object in Gemini response. Full response text:', responseText);
+                console.log('handleSubmit: Setting answer to "Could not process your request..." (due to parsing failure or empty response)');
+                setAnswer(`Could not process your request. Gemini's response was not in the expected format.\n\nFull response: ${responseText}`);
+                return; 
             }
 
-            // If geminiResponse is not null, proceed with action handling
             if (geminiResponse.action === 'add_shop_item') {
                 if (geminiResponse.item_name && typeof geminiResponse.usd_price === 'number' && geminiResponse.usd_price > 0) {
                     const pointsCost = Math.round(geminiResponse.usd_price * 35);
-                    setAnswer(`Requesting to add "${geminiResponse.item_name}" (USD ${geminiResponse.usd_price.toFixed(2)}) for ${pointsCost} points... This will require parental approval.`);
-                    try {
-                        // Use submitFeatureRequest instead of createStoreItem
-                        await api.submitFeatureRequest({
-                            request_type: api.RequestTypeAPI.ADD_STORE_ITEM,
-                            details: {
+                    
+                    if (currentUser && currentUser.role === 'parent') {
+                        console.log('handleSubmit: Parent path. Setting answer to "Adding..."');
+                        setAnswer(`Adding "${geminiResponse.item_name}" (USD ${geminiResponse.usd_price.toFixed(2)}) for ${pointsCost} points to the store...`);
+                        try {
+                            await api.createStoreItem({
                                 name: geminiResponse.item_name,
                                 points_cost: pointsCost,
-                                description: `Requested based on USD price: $${geminiResponse.usd_price.toFixed(2)}`, // Optional: add price context
-                            }
-                        });
-                        setAnswer(`Successfully submitted a request to add "${geminiResponse.item_name}" for ${pointsCost} points. A parent will need to approve it.`);
-                    } catch (createError) {
-                        console.error('Error submitting feature request for store item:', createError);
-                        setAnswer(`Error submitting request to add "${geminiResponse.item_name}".`);
+                                description: `Added via Gemini. Original USD price: $${geminiResponse.usd_price.toFixed(2)}`,
+                            });
+                            console.log('handleSubmit: Parent path. Setting answer to "Successfully added..."');
+                            setAnswer(`Successfully added "${geminiResponse.item_name}" to the store for ${pointsCost} points.`);
+                        } catch (createError) {
+                            console.error('handleSubmit: Parent path. Error creating store item:', createError);
+                            console.log('handleSubmit: Parent path. Setting answer to "Error adding..."');
+                            setAnswer(`Error adding "${geminiResponse.item_name}" to the store.`);
+                        }
+                    } else {
+                        console.log('handleSubmit: Kid path. Setting answer to "Requesting..."');
+                        setAnswer(`Requesting to add "${geminiResponse.item_name}" (USD ${geminiResponse.usd_price.toFixed(2)}) for ${pointsCost} points... This will require parental approval.`);
+                        try {
+                            await api.submitFeatureRequest({
+                                request_type: api.RequestTypeAPI.ADD_STORE_ITEM,
+                                details: {
+                                    name: geminiResponse.item_name,
+                                    points_cost: pointsCost,
+                                    description: `Requested based on USD price: $${geminiResponse.usd_price.toFixed(2)}`,
+                                }
+                            });
+                            console.log('handleSubmit: Kid path. Setting answer to "Successfully submitted..."');
+                            setAnswer(`Successfully submitted a request to add "${geminiResponse.item_name}" for ${pointsCost} points. A parent will need to approve it.`);
+                        } catch (createError) {
+                            console.error('handleSubmit: Kid path. Error submitting feature request:', createError);
+                            console.log('handleSubmit: Kid path. Setting answer to "Error submitting..."');
+                            setAnswer(`Error submitting request to add "${geminiResponse.item_name}".`);
+                        }
                     }
                 } else {
-                    console.error('Gemini response for add_shop_item missing required fields or invalid usd_price:', geminiResponse);
+                    console.error('handleSubmit: add_shop_item path. Gemini response missing required fields (item_name, usd_price) or usd_price is invalid. Response:', geminiResponse);
+                    console.log('handleSubmit: add_shop_item path. Setting answer to "Could not extract item name or a valid USD price..."');
                     setAnswer('Could not extract item name or a valid USD price from your request. Please check the console for details from Gemini.');
                 }
             } else if (geminiResponse && geminiResponse.action === 'answer') {
+                console.log('handleSubmit: Answer path. Setting answer from Gemini.');
                 setAnswer(geminiResponse.answer);
             } else {
-                // If JSON was not found, or action was unknown, display the raw response
-                setAnswer(`Could not process your request. Gemini's response:\n\n${responseText}`);
+                console.error('handleSubmit: Unknown action or invalid response structure from Gemini. Response:', geminiResponse);
+                console.log('handleSubmit: Setting answer to "Received an unknown or improperly structured response..."');
+                setAnswer('Received an unknown or improperly structured response from Gemini.');
             }
-
-            if (geminiResponse.action === 'add_shop_item') {
-                if (geminiResponse.item_name && geminiResponse.points_cost !== undefined) {
-                    setAnswer(`Requesting to add "${geminiResponse.item_name}" for ${geminiResponse.points_cost} points...`);
-                    try {
-                        await api.createStoreItem({ name: geminiResponse.item_name, points_cost: geminiResponse.points_cost });
-                        setAnswer(`Successfully requested to add "${geminiResponse.item_name}". A parent will need to approve it.`);
-                    } catch (createError) {
-                        console.error('Error creating store item:', createError);
-                        setAnswer(`Error requesting to add "${geminiResponse.item_name}".`);
-                    }
-                } else {
-                    setAnswer('Could not extract item name or points cost from your request.');
-                }
-            } else if (geminiResponse.action === 'answer') {
-                setAnswer(geminiResponse.answer);
-            } else {
-                setAnswer('Could not understand your request. Please try rephrasing.');
-            }
-
-        } catch (error) {
-            console.error('Error asking Gemini:', error);
-            setAnswer('Error communicating with Gemini. Please check the console for details.');
+        } catch (error) { 
+            console.error('handleSubmit: Error in outer try block (e.g., api.askGemini call failed):', error);
+            console.log('handleSubmit: Outer catch. Setting answer to "Failed to communicate with Gemini..."');
+            setAnswer('Failed to communicate with Gemini or process its response. Please try again.');
         }
+        console.log('handleSubmit: End');
     };
     
     const navLinks = [
