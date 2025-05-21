@@ -48,6 +48,7 @@ Resources:
           CHORES_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChores", !Sub "${TableNamePrefix}KidsRewardsChores"]
           CHORE_LOGS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChoreLogs", !Sub "${TableNamePrefix}KidsRewardsChoreLogs"]
           REQUESTS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsRequests", !Sub "${TableNamePrefix}KidsRewardsRequests"] # New Table Env Var
+          FAMILIES_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsFamilies", !Sub "${TableNamePrefix}KidsRewardsFamilies"] # New Table Env Var for Families
           APP_SECRET_KEY: !Ref AppSecret
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
@@ -255,6 +256,21 @@ Resources:
           ProvisionedThroughput:
             ReadCapacityUnits: 2
             WriteCapacityUnits: 2
+    DeletionPolicy: Retain
+
+  KidsRewardsFamiliesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "KidsRewardsFamilies", !Sub "${TableNamePrefix}KidsRewardsFamilies"]
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 2 # Adjusted for potentially lower traffic than users/items
+        WriteCapacityUnits: 2 # Adjusted for potentially lower traffic
     DeletionPolicy: Retain
 
 Conditions:

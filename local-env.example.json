@@ -4,6 +4,10 @@
     "USERS_TABLE_NAME": "KidsRewardsUsers",
     "STORE_ITEMS_TABLE_NAME": "KidsRewardsStoreItems",
     "PURCHASE_LOGS_TABLE_NAME": "KidsRewardsPurchaseLogs",
+    "CHORES_TABLE_NAME": "KidsRewardsChores",
+    "CHORE_LOGS_TABLE_NAME": "KidsRewardsChoreLogs",
+    "REQUESTS_TABLE_NAME": "KidsRewardsRequests",
+    "FAMILIES_TABLE_NAME": "KidsRewardsFamilies",
     "APP_SECRET_KEY": "yourlocalsecretkeyreplacethis"
   }
 }

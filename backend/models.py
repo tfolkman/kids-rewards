@@ -10,25 +10,41 @@ class UserRole(str, Enum):
     KID = "kid"
 
 
-class UserBase(BaseModel):
-    username: str
-    # role: UserRole # Role will be part of User model, not necessarily UserBase for creation
+class FamilyBase(BaseModel):
+    name: str
 
 
-class UserCreate(BaseModel):  # No longer inherits UserBase directly if role is removed for creation
-    username: str
-    password: str
+class FamilyCreate(FamilyBase):
+    pass
 
 
-class User(UserBase):  # User still has a role
-    role: UserRole
-    id: str  # Or int, depending on DB
-    hashed_password: str
-    points: Optional[int] = None  # Only applicable for kids
+class Family(FamilyBase):
+    id: str
 
     class Config:
-        from_attributes = True  # For Pydantic V2
-        # orm_mode = True # For Pydantic V1
+        from_attributes = True
+
+
+class UserBase(BaseModel):
+    username: str
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    family_id: Optional[str] = None
+    family_name: Optional[str] = None
+
+
+class User(UserBase):
+    role: UserRole
+    id: str
+    hashed_password: str
+    points: Optional[int] = None
+    family_id: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
 class Token(BaseModel):
@@ -38,12 +54,14 @@ class Token(BaseModel):
 
 class TokenData(BaseModel):
     username: Optional[str] = None
+    family_id: Optional[str] = None
 
 
 class StoreItemBase(BaseModel):
     name: str
     description: Optional[str] = None
     points_cost: int = Field(gt=0)
+    family_id: str
 
 
 class StoreItemCreate(StoreItemBase):
@@ -51,11 +69,10 @@ class StoreItemCreate(StoreItemBase):
 
 
 class StoreItem(StoreItemBase):
-    id: str  # Or int
+    id: str
 
     class Config:
-        from_attributes = True  # For Pydantic V2
-        # orm_mode = True # For Pydantic V1
+        from_attributes = True
 
 
 class PointsAward(BaseModel):
@@ -65,7 +82,7 @@ class PointsAward(BaseModel):
 
 
 class RedemptionRequest(BaseModel):
-    item_id: str  # Or int
+    item_id: str
 
 
 class UserPromoteRequest(BaseModel):
@@ -76,7 +93,7 @@ class PurchaseStatus(str, Enum):
     PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
-    COMPLETED = "completed"  # Default for now, will change with approval system
+    COMPLETED = "completed"
 
 
 class PurchaseLogBase(BaseModel):
@@ -87,6 +104,7 @@ class PurchaseLogBase(BaseModel):
     points_spent: int
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     status: PurchaseStatus = PurchaseStatus.PENDING
+    family_id: str
 
 
 class PurchaseLogCreate(PurchaseLogBase):
@@ -94,26 +112,23 @@ class PurchaseLogCreate(PurchaseLogBase):
 
 
 class PurchaseLog(PurchaseLogBase):
-    id: str  # Or int, depending on DB
+    id: str
 
     class Config:
         from_attributes = True
 
 
 class ChoreStatus(str, Enum):
-    AVAILABLE = "available"  # Chore is available for kids to do
-    PENDING_APPROVAL = "pending_approval"  # Kid submitted chore, awaiting parent approval
-    APPROVED = "approved"  # Parent approved, points awarded
-    REJECTED = "rejected"  # Parent rejected
-    # COMPLETED might be redundant if APPROVED means completed and awarded.
-    # ARCHIVED could be for chores no longer active but kept for history.
+    AVAILABLE = "available"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 class ChoreBase(BaseModel):
     name: str
     description: Optional[str] = None
     points_value: int = Field(gt=0)
-    # created_by_parent_id: str # This will be derived from the authenticated user
 
 
 class ChoreCreate(ChoreBase):
@@ -122,10 +137,10 @@ class ChoreCreate(ChoreBase):
 
 class Chore(ChoreBase):
     id: str
-    created_by_parent_id: str  # User ID of the parent who created it
+    created_by_parent_id: str
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
-    is_active: bool = True  # To allow deactivating chores instead of hard delete
+    is_active: bool = True
 
     class Config:
         from_attributes = True
@@ -133,21 +148,19 @@ class Chore(ChoreBase):
 
 class ChoreSubmission(BaseModel):
     chore_id: str
-    # kid_id will be from the authenticated user
 
 
 class ChoreApprovalRequest(BaseModel):
     chore_log_id: str
-    approve: bool  # True to approve, False to reject
-    # parent_id will be from the authenticated user
+    approve: bool
 
 
 class ChoreLogBase(BaseModel):
     chore_id: str
-    chore_name: str  # Denormalized for easier display
+    chore_name: str
     kid_id: str
-    kid_username: str  # Denormalized
-    points_value: int  # Points for this specific instance of chore completion
+    kid_username: str
+    points_value: int
     status: ChoreStatus
     submitted_at: datetime = Field(default_factory=datetime.utcnow)
     reviewed_by_parent_id: Optional[str] = None
@@ -179,12 +192,9 @@ class RequestStatus(str, Enum):
 
 class RequestBase(BaseModel):
     requester_id: str
-    requester_username: str  # Denormalized for easier display
+    requester_username: str
     request_type: RequestType
-    details: dict  # Flexible field for request specifics
-    # Example for ADD_STORE_ITEM: {"name": "...", "description": "...", "points_cost": ...}
-    # Example for ADD_CHORE: {"name": "...", "description": "...", "points_value": ...}
-    # Example for OTHER: {"message": "..."}
+    details: dict
     status: RequestStatus = RequestStatus.PENDING
     created_at: datetime = Field(default_factory=datetime.utcnow)
 

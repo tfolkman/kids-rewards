@@ -66,6 +66,9 @@ def main():
     parser.add_argument(
         "--purchase-logs-table", type=str, help="Override the purchase logs table name"
     )
+    parser.add_argument(
+        "--families-table", type=str, help="Override the families table name"
+    )
 
     args = parser.parse_args()
 
@@ -103,12 +106,29 @@ def main():
         or os.getenv("PURCHASE_LOGS_TABLE_NAME")
         or f"{args.environment}-KidsRewardsPurchaseLogs"
     )
+    families_table_name = (
+        args.families_table
+        or os.getenv("FAMILIES_TABLE_NAME")
+        or f"{args.environment}-KidsRewardsFamilies"
+    )
 
     # --- Load and Seed Data ---
     seed_data_dir = "seed-data"
 
-    # --- Load and Seed Data ---
-    seed_data_dir = "seed-data"
+    # --- Define a default family ---
+    default_family_id = str(uuid.uuid4())
+    default_family_name = "Test Family"
+    families_to_seed = [
+        {
+            "id": default_family_id,
+            "name": default_family_name,
+            "created_at": datetime.utcnow().isoformat()
+        }
+    ]
+
+    # Seed Families Table
+    if families_to_seed:
+        seed_table(families_table_name, families_to_seed, dynamodb)
 
     # Define test users with plain text passwords
     test_users = [
@@ -118,12 +138,14 @@ def main():
             "role": "kid",
             "id": "testkid",
             "points": 100,
+            "family_id": default_family_id,  # Assign to default family
         },
         {
             "username": "testparent",
             "password": "password456",
             "role": "parent",
             "id": "testparent",
+            "family_id": default_family_id,  # Assign to default family
         },
     ]
 
@@ -136,16 +158,14 @@ def main():
             "username": user["username"],
             "hashed_password": hashed_password,
             "role": user["role"],  # Role is now lowercase
+            "family_id": user["family_id"],  # Add family_id
         }
         if "points" in user:
             user_item["points"] = Decimal(
                 str(user["points"])
             )  # Ensure points is Decimal
         else:  # For parents, ensure points is not set or is None if your model expects it
-            # If points should explicitly be absent for parents in DB:
             pass  # Do not add points field for parent
-            # If points should be null for parents in DB (and model handles Optional[int]):
-            # user_item["points"] = None # or handle as Decimal(0) if that's the convention
         users_to_seed.append(user_item)
 
     # Seed Users Table
@@ -156,6 +176,9 @@ def main():
     store_items_data_file = os.path.join(seed_data_dir, "store_items.json")
     store_items_data = load_seed_data(store_items_data_file)
     if store_items_data:
+        # Add family_id to each store item
+        for item in store_items_data:
+            item["family_id"] = default_family_id
         seed_table(store_items_table_name, store_items_data, dynamodb)
 
     # --- Seed Purchase Logs Table ---
@@ -176,6 +199,7 @@ def main():
                     "points_spent": Decimal(str(store_items_data[0]["points_cost"])),
                     "timestamp": (datetime.utcnow() - timedelta(days=1)).isoformat(),
                     "status": PurchaseStatus.PENDING.value,
+                    "family_id": default_family_id,  # Add family_id
                 }
             )
             # Approved request
@@ -194,6 +218,7 @@ def main():
                             datetime.utcnow() - timedelta(days=2)
                         ).isoformat(),
                         "status": PurchaseStatus.APPROVED.value,
+                        "family_id": default_family_id,  # Add family_id
                     }
                 )
             # Rejected request
@@ -212,6 +237,7 @@ def main():
                             datetime.utcnow() - timedelta(hours=5)
                         ).isoformat(),
                         "status": PurchaseStatus.REJECTED.value,
+                        "family_id": default_family_id,  # Add family_id
                     }
                 )
 

@@ -42,6 +42,9 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     to_encode = data.copy()
+    # Ensure family_id is in the data to be encoded
+    if "family_id" not in to_encode:
+        raise ValueError("family_id must be included in the token data")
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
@@ -51,12 +54,13 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     return encoded_jwt
 
 
-def decode_access_token(token: str) -> Optional[str]:
+def decode_access_token(token: str) -> Optional[dict]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: Optional[str] = payload.get("sub")
-        if username is None:
+        family_id: Optional[str] = payload.get("family_id")  # Extract family_id
+        if username is None or family_id is None:  # Ensure both username and family_id are present
             return None
-        return username
+        return {"username": username, "family_id": family_id}
     except JWTError:
         return None

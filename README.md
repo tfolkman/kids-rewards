@@ -198,8 +198,18 @@ The backend handles all the logic, like user logins and managing points.
                 ]" \
             --endpoint-url http://localhost:8000
         ```
+    *   **Create the `KidsRewardsFamilies` table (or your configured local table name):**
+        Assuming `KidsRewardsFamilies` for families:
+        ```bash
+        aws dynamodb create-table \
+            --table-name KidsRewardsFamilies \
+            --attribute-definitions AttributeName=id,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --endpoint-url http://localhost:8000
+        ```
         *   `--endpoint-url http://localhost:8000` is very important! It tells the AWS CLI to talk to your *local* database, not the real one in the cloud.
-        *   If you ever need to start fresh, you can delete these tables with `aws dynamodb delete-table --table-name YourTableName --endpoint-url http://localhost:8000` (e.g., for `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`) and then run the `create-table` commands again.
+        *   If you ever need to start fresh, you can delete these tables with `aws dynamodb delete-table --table-name YourTableName --endpoint-url http://localhost:8000` (e.g., for `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`, `KidsRewardsFamilies`) and then run the `create-table` commands again.
 
 3.  **Add Starting Data to Your Tables (Seeding):**
     It's helpful to have some sample users and items in the database when you're developing. We have a script for this.
@@ -221,7 +231,7 @@ The backend handles all the logic, like user logins and managing points.
         ```
     *   **Run the Seeding Script:** This command tells Python where to find your project's code (`PYTHONPATH=.`) and which database to talk to. Adjust table names if your local setup uses different ones.
         ```bash
-        PYTHONPATH=. DYNAMODB_ENDPOINT_OVERRIDE=http://localhost:8000 USERS_TABLE_NAME=KidsRewardsUsers STORE_ITEMS_TABLE_NAME=KidsRewardsStoreItems PURCHASE_LOGS_TABLE_NAME=KidsRewardsPurchaseLogs CHORES_TABLE_NAME=KidsRewardsChores CHORE_LOGS_TABLE_NAME=KidsRewardsChoreLogs REQUESTS_TABLE_NAME=KidsRewardsRequests python scripts/seed_dynamodb.py --environment local
+        PYTHONPATH=. DYNAMODB_ENDPOINT_OVERRIDE=http://localhost:8000 USERS_TABLE_NAME=KidsRewardsUsers STORE_ITEMS_TABLE_NAME=KidsRewardsStoreItems PURCHASE_LOGS_TABLE_NAME=KidsRewardsPurchaseLogs CHORES_TABLE_NAME=KidsRewardsChores CHORE_LOGS_TABLE_NAME=KidsRewardsChoreLogs REQUESTS_TABLE_NAME=KidsRewardsRequests FAMILIES_TABLE_NAME=KidsRewardsFamilies python scripts/seed_dynamodb.py --environment local
         ```
         This will add users like "testparent" and "testkid" to your local database. (Note: The seed script may need updating to populate chore and request tables if desired).
 
@@ -235,7 +245,7 @@ The backend handles all the logic, like user logins and managing points.
         ```
     *   **Set up Local Environment File:** Your backend needs a special file called `local-env.json` to know how to connect to your local database and other settings. We provide an example file called `local-env.example.json`.
         *   In your project's main folder (`kids_rewards`), make a copy of `local-env.example.json` and name the copy `local-env.json`.
-        *   Ensure the table names in `local-env.json` match what you created locally (e.g., `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`).
+        *   Ensure the table names in `local-env.json` match what you created locally (e.g., `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`, `KidsRewardsFamilies`).
     *   **Start the Local API:** This command runs your backend.
         *   It uses your `backend/template.yaml` to understand your function configuration (including the Dockerfile location).
         *   `local-env.json` provides environment variables to the running container.
@@ -468,4 +478,67 @@ Before the GitHub Actions workflow can successfully deploy to production, you mu
 *   **Complete AWS Setup:** Ensure the IAM OIDC Role, GitHub Secrets (`AWS_ROLE_TO_ASSUME`, `SAM_S3_BUCKET_NAME`), and ECR repository are correctly set up as described in the "Prerequisites for Production Deployment" section.
 *   **SAM S3 Bucket:** The `SAM_S3_BUCKET_NAME` secret should point to an S3 bucket you own, used by `sam deploy` for packaging.
 *   **Amplify Configuration:** Double-check your AWS Amplify settings to ensure it's correctly building from the `main` branch and that its environment variables point to the production API Gateway endpoint. The API Gateway endpoint URL can be found in the outputs of your SAM stack after a successful deployment.
-*   **Local Table Names:** The local setup instructions for creating DynamoDB tables and seeding use the default names (`KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`). Verify these against your `backend/template.yaml` (Conditions and Mappings for local environment) and `local-env.json` to ensure consistency if you've customized them.
+*   **Local Table Names:** The local setup instructions for creating DynamoDB tables and seeding use the default names (`KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`, `KidsRewardsFamilies`). Verify these against your `backend/template.yaml` (Conditions and Mappings for local environment) and `local-env.json` to ensure consistency if you've customized them.
+
+## ✨ New Feature: Families (Multi-Tenancy)
+
+This application now supports a multi-tenancy model centered around "Families". Each family acts as an isolated environment for its members (parents and kids), their chores, rewards, and other data.
+
+### Key Concepts:
+
+*   **Family:** A group of users (parents and kids). Each family has a unique name and ID.
+*   **Family Creation:** A user (typically a parent) can create a new family by providing a family name during user registration. They become the first member of this family.
+*   **Joining a Family:** Existing users or new users can be invited or can join a family using its unique `family_id`.
+*   **Data Isolation:** All core data like users, store items, purchase logs, chores, and chore logs are now scoped to a specific family. This means one family cannot see or interact with another family's data.
+
+### API Changes:
+
+*   **User Creation (`POST /users/`):**
+    *   When creating a new user, you can either:
+        *   Provide a `family_name` (string) to create a new family. The new user will be added to this new family.
+        *   Provide a `family_id` (string, UUID format) to add the new user to an existing family.
+    *   If neither `family_name` nor `family_id` is provided, user creation will fail.
+*   **Authentication (`POST /token`):**
+    *   The login process remains the same (username, password).
+    *   Upon successful login, the JWT access token now includes a `family_id` claim.
+    *   The response body of the `/token` endpoint also includes the `family_id`.
+*   **Family-Scoped Endpoints:**
+    *   All existing endpoints that deal with user-specific or shared data (e.g., `/users/me`, `/store/items`, `/store/purchase`, `/chores/`, `/chore-logs/`, `/leaderboard/`, `/requests/`) are now automatically scoped to the `family_id` of the authenticated user (extracted from the JWT). You no longer need to pass `family_id` in request bodies or query parameters for these.
+*   **New Endpoint (`POST /families/`):**
+    *   This endpoint allows an authenticated user (who is already part of a family, typically a parent) to create a *new, separate* family. This might be less common but is supported. The request body should contain a `name` for the new family. The user creating it is *not* automatically added to this new family.
+    *   `POST /families/`
+        *   Request Body: `{"name": "New Family Name"}`
+        *   Response: Details of the newly created family, including its `id`.
+
+### Environment Variables:
+
+A new environment variable has been added for the backend:
+
+*   `FAMILIES_TABLE_NAME`: Specifies the DynamoDB table name for storing family information.
+    *   Example for `local-env.json`: `"FAMILIES_TABLE_NAME": "KidsRewardsFamilies"`
+    *   Example for `template.yaml` (parameter): `FamiliesTableName`
+
+### Data Model Changes:
+
+*   **`Family` Model:**
+    *   `id`: (string, UUID) - Unique identifier for the family.
+    *   `name`: (string) - Name of the family.
+    *   `created_at`: (string, ISO 8601 datetime) - Timestamp of family creation.
+*   **`User` Model:** Now includes `family_id` (string, UUID) to associate the user with a family.
+*   **`StoreItem` Model:** Now includes `family_id` (string, UUID).
+*   **`PurchaseLog` Model:** Now includes `family_id` (string, UUID).
+*   **`Chore` Model:** Now includes `family_id` (string, UUID).
+*   **`ChoreLog` Model:** Now includes `family_id` (string, UUID).
+*   **`Request` Model:** Now includes `family_id` (string, UUID).
+
+### Local Development Updates:
+
+*   **DynamoDB Table:** A new table (default `KidsRewardsFamilies`) needs to be created locally. See the updated `aws dynamodb create-table` command in the "Setting up the Local Backend" section.
+*   **Seeding Script:** The `scripts/seed_dynamodb.py` script has been updated to:
+    *   Accept a `--families-table` argument.
+    *   Create a default "Test Family".
+    *   Associate seeded users, store items, and purchase logs with this default family.
+    *   Ensure the `FAMILIES_TABLE_NAME` environment variable is passed when running the script.
+*   **`local-env.json`:** Add `FAMILIES_TABLE_NAME` to your `local-env.json` file.
+
+This multi-tenancy feature provides a more organized and private experience for different groups using the application.
