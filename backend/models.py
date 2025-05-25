@@ -200,3 +200,50 @@ class Request(RequestBase):
     id: str
     reviewed_by_parent_id: Optional[str] = None
     reviewed_at: Optional[datetime] = None
+
+
+class ChoreAssignmentStatus(str, Enum):
+    ASSIGNED = "assigned"  # Chore assigned to kid, not yet started
+    SUBMITTED = "submitted"  # Kid submitted assignment for approval
+    APPROVED = "approved"  # Parent approved, points awarded
+    REJECTED = "rejected"  # Parent rejected submission
+    OVERDUE = "overdue"  # Past due date without submission
+
+
+class ChoreAssignmentBase(BaseModel):
+    chore_id: str
+    assigned_to_kid_id: str
+    due_date: datetime
+    notes: Optional[str] = None  # Optional notes from parent when assigning
+
+
+class ChoreAssignmentCreate(ChoreAssignmentBase):
+    pass
+
+
+class ChoreAssignment(ChoreAssignmentBase):
+    id: str
+    assigned_by_parent_id: str
+    chore_name: str  # Denormalized for easier display
+    kid_username: str  # Denormalized for easier display
+    points_value: int  # Points value at time of assignment
+    assignment_status: ChoreAssignmentStatus = ChoreAssignmentStatus.ASSIGNED
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    submitted_at: Optional[datetime] = None
+    submission_notes: Optional[str] = None  # Notes from kid when submitting
+    reviewed_by_parent_id: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class ChoreAssignmentSubmission(BaseModel):
+    submission_notes: Optional[str] = None
+    # assignment_id and kid_id will be from the URL path and authenticated user
+
+
+class ChoreAssignmentApprovalRequest(BaseModel):
+    assignment_id: str
+    approve: bool  # True to approve, False to reject
+    # parent_id will be from the authenticated user

@@ -123,6 +123,41 @@ export interface ChoreActionRequestData {
   chore_log_id: string;
 }
 
+// Chore Assignment types
+export interface ChoreAssignmentCreate {
+  chore_id: string;
+  assigned_to_kid_id: string;
+  due_date?: string; // ISO date string
+  notes?: string;
+}
+
+export interface ChoreAssignment {
+  id: string;
+  chore_id: string;
+  chore_name: string;
+  assigned_to_kid_id: string;
+  kid_username: string;
+  points_value: number;
+  due_date?: string; // ISO date string
+  notes?: string;
+  assignment_status: string; // 'assigned', 'submitted', 'approved', 'rejected'
+  created_at: string; // ISO date string
+  assigned_by_parent_id: string;
+  assigned_by_parent_username: string;
+  submitted_at?: string; // ISO date string
+  submission_notes?: string;
+  reviewed_by_parent_id?: string;
+  reviewed_at?: string; // ISO date string
+}
+
+export interface ChoreAssignmentActionRequest {
+  assignment_id: string;
+}
+
+export interface ChoreAssignmentSubmission {
+  submission_notes?: string;
+}
+
 // Feature Request types (matching backend models and frontend pages)
 export enum RequestTypeAPI {
   ADD_STORE_ITEM = "add_store_item",
@@ -218,6 +253,15 @@ export const getMyChoreHistory = () => apiClient.get<ChoreLog[]>('/chores/histor
 export const getPendingChoreSubmissionsForMyChores = () => apiClient.get<ChoreLog[]>('/parent/chore-submissions/pending');
 export const approveChoreSubmission = (data: ChoreActionRequestData) => apiClient.post<ChoreLog>('/parent/chore-submissions/approve', data);
 export const rejectChoreSubmission = (data: ChoreActionRequestData) => apiClient.post<ChoreLog>('/parent/chore-submissions/reject', data);
+
+// Chore Assignments
+export const assignChoreToKid = (data: ChoreAssignmentCreate) => apiClient.post<ChoreAssignment>('/parent/chore-assignments/', data);
+export const getMyCreatedAssignments = () => apiClient.get<ChoreAssignment[]>('/parent/chore-assignments/');
+export const getMyAssignedChores = () => apiClient.get<ChoreAssignment[]>('/kids/my-assignments/');
+export const submitAssignmentCompletion = (assignmentId: string, data: ChoreAssignmentSubmission) => apiClient.post<ChoreAssignment>(`/chore-assignments/${assignmentId}/submit`, data);
+export const getPendingAssignmentSubmissions = () => apiClient.get<ChoreAssignment[]>('/parent/assignment-submissions/pending');
+export const approveAssignmentSubmission = (data: ChoreAssignmentActionRequest) => apiClient.post<ChoreAssignment>('/parent/assignment-submissions/approve', data);
+export const rejectAssignmentSubmission = (data: ChoreAssignmentActionRequest) => apiClient.post<ChoreAssignment>('/parent/assignment-submissions/reject', data);
 
 // Feature Requests
 export const submitFeatureRequest = (payload: KidFeatureRequestPayloadAPI) => apiClient.post<FeatureRequestAPI>('/requests/', payload);

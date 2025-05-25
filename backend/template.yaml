@@ -48,6 +48,7 @@ Resources:
           CHORES_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChores", !Sub "${TableNamePrefix}KidsRewardsChores"]
           CHORE_LOGS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChoreLogs", !Sub "${TableNamePrefix}KidsRewardsChoreLogs"]
           REQUESTS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsRequests", !Sub "${TableNamePrefix}KidsRewardsRequests"] # New Table Env Var
+          CHORE_ASSIGNMENTS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChoreAssignments", !Sub "${TableNamePrefix}KidsRewardsChoreAssignments"] # New Table for Chore Assignments
           APP_SECRET_KEY: !Ref AppSecret
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
@@ -249,6 +250,63 @@ Resources:
             - AttributeName: status
               KeyType: HASH
             - AttributeName: created_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 2
+            WriteCapacityUnits: 2
+    DeletionPolicy: Retain
+
+  KidsRewardsChoreAssignmentsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "KidsRewardsChoreAssignments", !Sub "${TableNamePrefix}KidsRewardsChoreAssignments"]
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: assigned_to_kid_id
+          AttributeType: S
+        - AttributeName: due_date
+          AttributeType: S
+        - AttributeName: assigned_by_parent_id
+          AttributeType: S
+        - AttributeName: assignment_status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      GlobalSecondaryIndexes:
+        - IndexName: KidAssignmentsIndex
+          KeySchema:
+            - AttributeName: assigned_to_kid_id
+              KeyType: HASH
+            - AttributeName: due_date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 2
+            WriteCapacityUnits: 2
+        - IndexName: ParentAssignmentsIndex
+          KeySchema:
+            - AttributeName: assigned_by_parent_id
+              KeyType: HASH
+            - AttributeName: due_date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput:
+            ReadCapacityUnits: 2
+            WriteCapacityUnits: 2
+        - IndexName: StatusAssignmentsIndex
+          KeySchema:
+            - AttributeName: assignment_status
+              KeyType: HASH
+            - AttributeName: due_date
               KeyType: RANGE
           Projection:
             ProjectionType: ALL

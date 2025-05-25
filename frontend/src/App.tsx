@@ -43,7 +43,8 @@ import {
     IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, 
     IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, 
     IconReceipt, IconHourglassHigh, IconClipboardList, IconHistory, 
-    IconChecklist, IconMessagePlus, IconListCheck, IconMessageChatbot 
+    IconChecklist, IconMessagePlus, IconListCheck, IconMessageChatbot,
+    IconUserCheck
 } from '@tabler/icons-react';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -61,6 +62,8 @@ import ChoresPage from './pages/ChoresPage';
 import ChoreHistoryPage from './pages/ChoreHistoryPage';
 import MakeRequestPage from './pages/MakeRequestPage';
 import ManageRequestsPage from './pages/ManageRequestsPage';
+import MyAssignedChoresPage from './pages/MyAssignedChoresPage';
+import AssignChoresPage from './pages/AssignChoresPage';
 
 interface AuthContextType {
   currentUser: api.User | null | undefined;
@@ -381,6 +384,7 @@ Possible intents:
                     {navLinks.map((link) => (<NavLink key={link.label} label={link.label} leftSection={<link.icon size="1rem" stroke={1.5} />} component={RouterLink} to={link.to} active={location.pathname === link.to} onClick={() => { navigate(link.to); if (mobileOpened) toggleMobile(); }}/>))}
                     {currentUser.role === 'kid' && (<>
                         <NavLink label="Chores" leftSection={<IconChecklist size="1rem" stroke={1.5} />} component={RouterLink} to="/chores" active={location.pathname === "/chores"} onClick={() => { navigate("/chores"); if (mobileOpened) toggleMobile(); }}/>
+                        <NavLink label="My Assigned Chores" leftSection={<IconUserCheck size="1rem" stroke={1.5} />} component={RouterLink} to="/my-assigned-chores" active={location.pathname === "/my-assigned-chores"} onClick={() => { navigate("/my-assigned-chores"); if (mobileOpened) toggleMobile(); }}/>
                         <NavLink label="My Chore History" leftSection={<IconHistory size="1rem" stroke={1.5} />} component={RouterLink} to="/chores/history" active={location.pathname === "/chores/history"} onClick={() => { navigate("/chores/history"); if (mobileOpened) toggleMobile(); }}/>
                         <NavLink label="My Purchase History" leftSection={<IconReceipt size="1rem" stroke={1.5} />} component={RouterLink} to="/history" active={location.pathname === "/history"} onClick={() => { navigate("/history"); if (mobileOpened) toggleMobile(); }}/>
                         <NavLink label="Make a Request" leftSection={<IconMessagePlus size="1rem" stroke={1.5} />} component={RouterLink} to="/make-request" active={location.pathname === "/make-request"} onClick={() => { navigate("/make-request"); if (mobileOpened) toggleMobile(); }}/>
@@ -388,6 +392,7 @@ Possible intents:
                     {currentUser.role === 'parent' && (<>
                         <Divider my="sm" label="Parent Zone" labelPosition="center"/>
                         <NavLink label="Manage Chores" leftSection={<IconClipboardList size="1rem" stroke={1.5} />} component={RouterLink} to="/parent/manage-chores" active={location.pathname === "/parent/manage-chores"} onClick={() => { navigate("/parent/manage-chores"); if (mobileOpened) toggleMobile(); }}/>
+                        <NavLink label="Assign Chores" leftSection={<IconUserCheck size="1rem" stroke={1.5} />} component={RouterLink} to="/parent/assign-chores" active={location.pathname === "/parent/assign-chores"} onClick={() => { navigate("/parent/assign-chores"); if (mobileOpened) toggleMobile(); }}/>
                         <NavLink label="Pending Requests" leftSection={<IconHourglassHigh size="1rem" stroke={1.5} />} component={RouterLink} to="/parent/pending-requests" active={location.pathname === "/parent/pending-requests"} onClick={() => { navigate("/parent/pending-requests"); if (mobileOpened) toggleMobile(); }}/>
                         <NavLink label="Manage Feature Requests" leftSection={<IconListCheck size="1rem" stroke={1.5} />} component={RouterLink} to="/manage-requests" active={location.pathname === "/manage-requests"} onClick={() => { navigate("/manage-requests"); if (mobileOpened) toggleMobile(); }}/>
                     </>)}
@@ -425,9 +430,11 @@ Possible intents:
                         <Route path="/parent/pending-requests" element={<PendingRequestsPage />} />
                         <Route path="/parent/manage-chores" element={<ManageChoresPage />} />
                         <Route path="/chores" element={<ChoresPage />} />
+                        <Route path="/my-assigned-chores" element={<MyAssignedChoresPage />} />
                         <Route path="/chores/history" element={<ChoreHistoryPage />} />
                         <Route path="/make-request" element={<MakeRequestPage />} />
                         <Route path="/manage-requests" element={<ManageRequestsPage />} />
+                        <Route path="/parent/assign-chores" element={<AssignChoresPage />} />
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
