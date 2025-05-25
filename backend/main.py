@@ -355,6 +355,7 @@ async def get_my_chore_history(
 
 class ChoreLogWithStreakBonus(models.ChoreLog):
     """Extended ChoreLog model that includes streak bonus information"""
+
     streak_bonus_points: Optional[int] = None
     streak_day: Optional[int] = None
 

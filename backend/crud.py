@@ -680,9 +680,7 @@ def get_chore_log_by_id(log_id: str) -> Optional[models.ChoreLog]:
         return None
 
 
-def _validate_chore_log_for_update(
-    chore_log: Optional[models.ChoreLog], parent_user: models.User
-) -> models.Chore:
+def _validate_chore_log_for_update(chore_log: Optional[models.ChoreLog], parent_user: models.User) -> models.Chore:
     """Validate chore log can be updated by the parent user."""
     if not chore_log:
         raise HTTPException(status_code=404, detail="Chore log not found.")
@@ -706,9 +704,7 @@ def _award_points_and_streak_bonus(kid_username: str, points_value: int) -> None
     """Award points to kid and check for streak bonuses."""
     kid_user_to_update = get_user_by_username(kid_username)
     if not kid_user_to_update:
-        raise HTTPException(
-            status_code=404, detail=f"Kid user {kid_username} not found for point update."
-        )
+        raise HTTPException(status_code=404, detail=f"Kid user {kid_username} not found for point update.")
 
     updated_kid = update_user_points(kid_username, points_value)
     if not updated_kid:
@@ -1237,18 +1233,10 @@ def calculate_streak_for_kid(kid_id: str) -> dict:
     chore_logs = get_chore_logs_by_kid_id(kid_id)
 
     # Filter for approved chores only and sort by date
-    approved_chores = [
-        log for log in chore_logs
-        if log.status == models.ChoreStatus.APPROVED
-    ]
+    approved_chores = [log for log in chore_logs if log.status == models.ChoreStatus.APPROVED]
 
     if not approved_chores:
-        return {
-            "current_streak": 0,
-            "longest_streak": 0,
-            "last_completion_date": None,
-            "streak_active": False
-        }
+        return {"current_streak": 0, "longest_streak": 0, "last_completion_date": None, "streak_active": False}
 
     # Sort by submitted_at date (descending - newest first)
     approved_chores.sort(key=lambda x: x.submitted_at, reverse=True)
@@ -1263,12 +1251,7 @@ def calculate_streak_for_kid(kid_id: str) -> dict:
             seen_dates.add(date_only)
 
     if not completion_dates:
-        return {
-            "current_streak": 0,
-            "longest_streak": 0,
-            "last_completion_date": None,
-            "streak_active": False
-        }
+        return {"current_streak": 0, "longest_streak": 0, "last_completion_date": None, "streak_active": False}
 
     # Calculate current streak
     current_streak = 0
@@ -1282,7 +1265,7 @@ def calculate_streak_for_kid(kid_id: str) -> dict:
 
         # Count consecutive days backwards
         for i in range(1, len(completion_dates)):
-            expected_date = completion_dates[i-1] - timedelta(days=1)
+            expected_date = completion_dates[i - 1] - timedelta(days=1)
             if completion_dates[i] == expected_date:
                 current_streak += 1
             else:
@@ -1295,7 +1278,7 @@ def calculate_streak_for_kid(kid_id: str) -> dict:
     temp_streak = 1
 
     for i in range(1, len(completion_dates)):
-        expected_date = completion_dates[i-1] - timedelta(days=1)
+        expected_date = completion_dates[i - 1] - timedelta(days=1)
         if completion_dates[i] == expected_date:
             temp_streak += 1
             longest_streak = max(longest_streak, temp_streak)
@@ -1306,7 +1289,7 @@ def calculate_streak_for_kid(kid_id: str) -> dict:
         "current_streak": current_streak,
         "longest_streak": longest_streak,
         "last_completion_date": completion_dates[0].isoformat() if completion_dates else None,
-        "streak_active": streak_active
+        "streak_active": streak_active,
     }
 
 
@@ -1317,9 +1300,9 @@ def award_streak_bonus_points(kid_username: str, current_streak: int) -> Optiona
     """
     # Define streak milestones and their bonus points
     STREAK_MILESTONES = {
-        3: 10,    # 3-day streak: 10 bonus points
-        7: 25,    # 7-day streak: 25 bonus points
-        14: 50,   # 14-day streak: 50 bonus points
+        3: 10,  # 3-day streak: 10 bonus points
+        7: 25,  # 7-day streak: 25 bonus points
+        14: 50,  # 14-day streak: 50 bonus points
         30: 100,  # 30-day streak: 100 bonus points
     }
 
@@ -1390,9 +1373,7 @@ def submit_assignment_completion(
         return None
 
 
-def _validate_assignment_for_update(
-    assignment: Optional[models.ChoreAssignment], parent_user: models.User
-) -> None:
+def _validate_assignment_for_update(assignment: Optional[models.ChoreAssignment], parent_user: models.User) -> None:
     """Validate assignment can be updated by the parent user."""
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found.")
