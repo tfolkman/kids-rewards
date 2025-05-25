@@ -36,3 +36,17 @@
     transform: rotate(360deg);
   }
 }
+
+/* Mobile header fixes */
+@media (max-width: 768px) {
+  /* Ensure app title doesn't wrap */
+  .mantine-Title-root {
+    white-space: nowrap;
+  }
+  
+  /* Adjust header padding on mobile */
+  .mantine-AppShell-header .mantine-Group-root {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+}
