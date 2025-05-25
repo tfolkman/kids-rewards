@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import * as api from '../services/api';
 import { ChoreLogWithStreakBonus, ChoreStatus } from '../services/api';
 import {
-  Table,
   Text,
   Paper,
   Loader,
@@ -11,11 +10,12 @@ import {
   Container,
   Stack,
   Badge,
-  ScrollArea,
   Group,
   Tooltip,
+  Card,
 } from '@mantine/core';
-import { IconAlertCircle, IconFlame } from '@tabler/icons-react';
+import { IconAlertCircle, IconFlame, IconCalendar, IconCoins } from '@tabler/icons-react';
+import { ResponsiveTable } from '../components/ResponsiveTable';
 
 const ChoreHistoryPage: React.FC = () => {
   const [choreHistory, setChoreHistory] = useState<ChoreLogWithStreakBonus[]>([]);
@@ -86,35 +86,91 @@ const ChoreHistoryPage: React.FC = () => {
     );
   }
 
-  const rows = choreHistory.map((log) => (
-    <Table.Tr key={log.id}>
-      <Table.Td>
-        <Text fw={500}>{log.chore_name}</Text>
-      </Table.Td>
-      <Table.Td ta="right">
+  const columns = [
+    {
+      key: 'chore_name',
+      label: 'Chore Name',
+      render: (value: string) => <Text fw={500}>{value}</Text>
+    },
+    {
+      key: 'points_value',
+      label: 'Points',
+      align: 'right' as const,
+      render: (value: number, row: ChoreLogWithStreakBonus) => (
         <Group gap="xs" justify="flex-end">
-          <Text>{log.points_value}</Text>
-          {log.streak_bonus_points && (
-            <Tooltip label={`${log.streak_day}-day streak bonus!`}>
+          <Text>{value}</Text>
+          {row.streak_bonus_points && (
+            <Tooltip label={`${row.streak_day}-day streak bonus!`}>
               <Group gap={4}>
                 <IconFlame size={16} color="orange" />
-                <Text fw={700} c="orange">+{log.streak_bonus_points}</Text>
+                <Text fw={700} c="orange">+{row.streak_bonus_points}</Text>
               </Group>
             </Tooltip>
           )}
         </Group>
-      </Table.Td>
-      <Table.Td>{getStatusBadge(log.status)}</Table.Td>
-      <Table.Td>
-        <Text fz="sm">{new Date(log.submitted_at).toLocaleString()}</Text>
-      </Table.Td>
-      <Table.Td>
-        <Text fz="sm">
-          {log.reviewed_at ? new Date(log.reviewed_at).toLocaleString() : '-'}
+      )
+    },
+    {
+      key: 'status',
+      label: 'Status',
+      render: (value: ChoreStatus) => getStatusBadge(value)
+    },
+    {
+      key: 'submitted_at',
+      label: 'Submitted At',
+      render: (value: string) => <Text size="sm">{new Date(value).toLocaleString()}</Text>
+    },
+    {
+      key: 'reviewed_at',
+      label: 'Reviewed At',
+      render: (value: string | null) => (
+        <Text size="sm">{value ? new Date(value).toLocaleString() : '-'}</Text>
+      )
+    }
+  ];
+
+  const cardRender = (log: ChoreLogWithStreakBonus) => (
+    <Stack gap="sm">
+      <Group justify="space-between">
+        <Text fw={600} size="lg">{log.chore_name}</Text>
+        {getStatusBadge(log.status)}
+      </Group>
+      
+      <Group justify="space-between">
+        <Group gap="xs">
+          <IconCoins size={18} />
+          <Text fw={500}>
+            {log.points_value} points
+            {log.streak_bonus_points && (
+              <Text component="span" c="orange" fw={700} ml="xs">
+                +{log.streak_bonus_points} bonus
+              </Text>
+            )}
+          </Text>
+        </Group>
+        {log.streak_bonus_points && (
+          <Tooltip label={`${log.streak_day}-day streak!`}>
+            <Badge color="orange" leftSection={<IconFlame size={14} />}>
+              Day {log.streak_day}
+            </Badge>
+          </Tooltip>
+        )}
+      </Group>
+      
+      <Group gap="xs" c="dimmed">
+        <IconCalendar size={16} />
+        <Text size="sm">
+          {new Date(log.submitted_at).toLocaleDateString()} at {new Date(log.submitted_at).toLocaleTimeString()}
         </Text>
-      </Table.Td>
-    </Table.Tr>
-  ));
+      </Group>
+      
+      {log.reviewed_at && (
+        <Text size="sm" c="dimmed">
+          Reviewed: {new Date(log.reviewed_at).toLocaleDateString()}
+        </Text>
+      )}
+    </Stack>
+  );
 
   return (
     <Container size="lg" py="xl">
@@ -162,22 +218,12 @@ const ChoreHistoryPage: React.FC = () => {
               ) : null;
             })()}
 
-            <Paper shadow="md" radius="md" withBorder>
-              <ScrollArea>
-                <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="sm" horizontalSpacing="md" miw={700}>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Chore Name</Table.Th>
-                      <Table.Th ta="right">Points</Table.Th>
-                      <Table.Th>Status</Table.Th>
-                      <Table.Th>Submitted At</Table.Th>
-                      <Table.Th>Reviewed At</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>{rows}</Table.Tbody>
-                </Table>
-              </ScrollArea>
-            </Paper>
+            <ResponsiveTable
+              data={choreHistory}
+              columns={columns}
+              cardRender={cardRender}
+              className="fade-in"
+            />
           </>
         )}
       </Stack>

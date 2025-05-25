@@ -35,7 +35,11 @@ import {
     LoadingOverlay,
     MantineTheme,
     Modal,
-    Textarea
+    Textarea,
+    Menu,
+    ActionIcon,
+    Avatar,
+    rem
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { Notifications, notifications } from '@mantine/notifications';
@@ -44,11 +48,12 @@ import {
     IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, 
     IconReceipt, IconHourglassHigh, IconClipboardList, IconHistory, 
     IconChecklist, IconMessagePlus, IconListCheck, IconMessageChatbot,
-    IconUserCheck
+    IconUserCheck, IconUser, IconChevronDown
 } from '@tabler/icons-react';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import './App.css';
+import './animations.css';
 import * as api from './services/api';
 import ManageStoreItems from './components/ManageStoreItems';
 import AwardPoints from './components/AwardPoints';
@@ -108,8 +113,8 @@ const LoginPage = () => {
     };
 
     return (
-        <Container size="xs" style={{ marginTop: '50px' }}>
-            <Paper withBorder shadow="md" p={30} mt={30} radius="md">
+        <Container size="xs" style={{ marginTop: '50px' }} className="fade-in">
+            <Paper withBorder shadow="md" p={30} mt={30} radius="md" className="card-hover">
                 <Title ta="center" order={2} mb="lg">Welcome Back!</Title>
                 <form onSubmit={handleSubmit}>
                     <Stack>
@@ -119,7 +124,7 @@ const LoginPage = () => {
                         <Button type="submit" fullWidth mt="xl" loading={loading} leftSection={<IconLogin size={16} />}>Login</Button>
                     </Stack>
                 </form>
-                <Text ta="center" mt="md">Don't have an account? <RouterLink to="/signup" style={{ textDecoration: 'none' }}><Text component="span" c="teal" fw={500}>Sign Up</Text></RouterLink></Text>
+                <Text ta="center" mt="md">Don't have an account? <RouterLink to="/signup" style={{ textDecoration: 'none' }}><Text component="span" c="indigo" fw={500}>Sign Up</Text></RouterLink></Text>
             </Paper>
         </Container>
     );
@@ -152,8 +157,8 @@ const SignupPage = () => {
     };
 
     return (
-        <Container size="xs" style={{ marginTop: '50px' }}>
-            <Paper withBorder shadow="md" p={30} mt={30} radius="md">
+        <Container size="xs" style={{ marginTop: '50px' }} className="fade-in">
+            <Paper withBorder shadow="md" p={30} mt={30} radius="md" className="card-hover">
                 <Title ta="center" order={2} mb="lg">Create Your Account</Title>
                 <form onSubmit={handleSubmit}>
                     <Stack>
@@ -163,7 +168,7 @@ const SignupPage = () => {
                         <Button type="submit" fullWidth mt="xl" loading={loading} leftSection={<IconUserPlus size={16}/>}>Sign Up</Button>
                     </Stack>
                 </form>
-                <Text ta="center" mt="md">Already have an account? <RouterLink to="/login" style={{ textDecoration: 'none' }}><Text component="span" c="teal" fw={500}>Login</Text></RouterLink></Text>
+                <Text ta="center" mt="md">Already have an account? <RouterLink to="/login" style={{ textDecoration: 'none' }}><Text component="span" c="indigo" fw={500}>Login</Text></RouterLink></Text>
             </Paper>
         </Container>
     );
@@ -175,12 +180,19 @@ const Dashboard = () => {
     if (!currentUser) return null; // Should be caught by ProtectedRoute
 
     return (
-        <Container>
+        <Container className="page-container">
             <Title order={2} my="lg">Dashboard</Title>
-            <Paper p="lg" shadow="xs" withBorder>
+            <Paper p="lg" shadow="xs" withBorder className="fade-in">
                 <Title order={3} c={theme.primaryColor}>Welcome, {currentUser.username}!</Title>
                 <Text component="span">Role: <Badge color={currentUser.role === 'parent' ? 'pink' : 'green'}>{currentUser.role}</Badge></Text>
-                {currentUser.role === 'kid' && <Text component="span" mt="sm" size="lg">Your Points: <Badge variant="filled" size="xl" color="yellow">{currentUser.points ?? 0}</Badge></Text>}
+                {currentUser.role === 'kid' && (
+                    <Group mt="md" gap="xs">
+                        <Text size="lg" fw={500}>Your Points:</Text>
+                        <Badge variant="filled" size="xl" color="yellow" className="count-up" styles={{ root: { fontSize: '1.2rem', padding: '12px 20px' } }}>
+                            {currentUser.points ?? 0}
+                        </Badge>
+                    </Group>
+                )}
             </Paper>
             {currentUser.role === 'kid' && (
                 <Box mt="lg">
@@ -247,13 +259,13 @@ const StorePage = () => {
             {searchResults.length === 0 ? <Text mt="lg">No items found.</Text> : (
                 <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="lg" mt="lg">
                     {searchResults.map(item => (
-                        <Card shadow="sm" padding="lg" radius="md" withBorder key={item.id}>
+                        <Card shadow="sm" padding="lg" radius="md" withBorder key={item.id} className="card-hover">
                             <Stack justify="space-between" style={{ height: '100%' }}>
                                 <Box>
                                     <Group justify="space-between" mt="md" mb="xs"><Title order={3}>{item.name}</Title><Badge color={theme.colors.yellow[6]} variant="light" size="lg">{item.points_cost} Points</Badge></Group>
                                     <Text size="sm" c="dimmed" mb="md">{item.description || 'No description available.'}</Text>
                                 </Box>
-                                {currentUser?.role === 'kid' && <Button variant="filled" color="teal" fullWidth mt="md" radius="md" onClick={() => handleRedeem(item.id, item.points_cost)} disabled={(currentUser.points ?? 0) < item.points_cost} leftSection={<IconShoppingCart size={16} />}>Redeem</Button>}
+                                {currentUser?.role === 'kid' && <Button variant="filled" color="indigo" fullWidth mt="md" radius="md" onClick={() => handleRedeem(item.id, item.points_cost)} disabled={(currentUser.points ?? 0) < item.points_cost} leftSection={<IconShoppingCart size={16} />}>Redeem</Button>}
                             </Stack>
                         </Card>
                     ))}
@@ -355,7 +367,7 @@ Possible intents:
             } else { notifications.show({ title: "Error", message: "Invalid suggestion type.", color: "red"}); return; }
 
             await api.submitFeatureRequest(payload);
-            notifications.show({ title: 'Request Submitted!', message: successMessage, color: 'teal', icon: <IconChecklist size={18} /> });
+            notifications.show({ title: 'Request Submitted!', message: successMessage, color: 'indigo', icon: <IconChecklist size={18} /> });
             resetGeminiModal();
         } catch (err: any) { notifications.show({ title: 'Submission Failed', message: err.response?.data?.detail || `Failed to submit request.`, color: 'red', icon: <IconAlertCircle size={18} /> });
         } finally { setGeminiLoading(false); }
@@ -372,37 +384,279 @@ Possible intents:
             <AppShell.Header>
                 <Group h="100%" px="md" justify="space-between">
                     <Group>
-                        {currentUser && (<><Burger opened={mobileOpened} onClick={toggleMobile} hiddenFrom="sm" size="sm" /><Burger opened={desktopOpened} onClick={toggleDesktop} visibleFrom="sm" size="sm" /></>)}
-                        <RouterLink to="/" style={{ textDecoration: 'none', color: 'inherit' }}><Title order={3}>Kids Rewards</Title></RouterLink>
+                        {currentUser && (
+                            <Burger 
+                                opened={mobileOpened} 
+                                onClick={toggleMobile} 
+                                hiddenFrom="sm" 
+                                size="sm" 
+                                aria-label="Toggle navigation"
+                            />
+                        )}
+                        {currentUser && (
+                            <Burger 
+                                opened={desktopOpened} 
+                                onClick={toggleDesktop} 
+                                visibleFrom="sm" 
+                                size="sm" 
+                                aria-label="Toggle navigation"
+                            />
+                        )}
+                        <RouterLink to="/" style={{ textDecoration: 'none', color: 'inherit' }}>
+                            <Title order={3}>Kids Rewards</Title>
+                        </RouterLink>
                     </Group>
+                    
                     {currentUser ? (
-                        <Group>
-                             <Button onClick={() => { resetGeminiModal(); openGeminiModal();}} variant="gradient" gradient={{ from: 'indigo', to: 'cyan' }} leftSection={<IconMessageChatbot size={18}/>}>Gemini Assistant</Button>
-                            {currentUser.role === 'kid' && <StreakDisplay compact />}
-                            <Text>{currentUser.username} ({currentUser.role})</Text>
-                            <Button onClick={handleLogout} variant="outline" color="red" leftSection={<IconLogout size={16}/>}>Logout</Button>
-                        </Group>
-                    ) : ((location.pathname !== '/login' && location.pathname !== '/signup') && <Button component={RouterLink} to="/login" variant="default">Login</Button>)}
+                        <>
+                            {/* Mobile view - simplified */}
+                            <Group hiddenFrom="sm" gap="xs">
+                                {currentUser.role === 'kid' && <StreakDisplay compact />}
+                                <Menu 
+                                    shadow="md" 
+                                    width={200} 
+                                    position="bottom-end"
+                                    transitionProps={{ transition: 'pop-top-right' }}
+                                >
+                                    <Menu.Target>
+                                        <ActionIcon 
+                                            variant="subtle" 
+                                            size="lg"
+                                            aria-label="User menu"
+                                        >
+                                            <IconUser size={24} />
+                                        </ActionIcon>
+                                    </Menu.Target>
+
+                                    <Menu.Dropdown>
+                                        <Menu.Label>
+                                            {currentUser.username}
+                                            <Text size="xs" c="dimmed">{currentUser.role}</Text>
+                                        </Menu.Label>
+                                        <Menu.Divider />
+                                        <Menu.Item 
+                                            leftSection={<IconMessageChatbot size={16} />}
+                                            onClick={() => { resetGeminiModal(); openGeminiModal(); }}
+                                        >
+                                            Gemini Assistant
+                                        </Menu.Item>
+                                        <Menu.Divider />
+                                        <Menu.Item 
+                                            color="red" 
+                                            leftSection={<IconLogout size={16} />}
+                                            onClick={handleLogout}
+                                        >
+                                            Logout
+                                        </Menu.Item>
+                                    </Menu.Dropdown>
+                                </Menu>
+                            </Group>
+
+                            {/* Desktop view - full layout */}
+                            <Group visibleFrom="sm">
+                                <Button 
+                                    onClick={() => { resetGeminiModal(); openGeminiModal(); }} 
+                                    variant="gradient" 
+                                    gradient={{ from: 'indigo', to: 'cyan' }} 
+                                    leftSection={<IconMessageChatbot size={18}/>}
+                                >
+                                    Gemini Assistant
+                                </Button>
+                                {currentUser.role === 'kid' && <StreakDisplay compact />}
+                                <Menu 
+                                    shadow="md" 
+                                    width={200} 
+                                    position="bottom-end"
+                                    transitionProps={{ transition: 'pop-top-right' }}
+                                >
+                                    <Menu.Target>
+                                        <Button 
+                                            variant="subtle" 
+                                            rightSection={<IconChevronDown size={16} />}
+                                        >
+                                            {currentUser.username}
+                                        </Button>
+                                    </Menu.Target>
+
+                                    <Menu.Dropdown>
+                                        <Menu.Label>
+                                            Account
+                                            <Text size="xs" c="dimmed">Role: {currentUser.role}</Text>
+                                        </Menu.Label>
+                                        <Menu.Divider />
+                                        <Menu.Item 
+                                            color="red" 
+                                            leftSection={<IconLogout size={16} />}
+                                            onClick={handleLogout}
+                                        >
+                                            Logout
+                                        </Menu.Item>
+                                    </Menu.Dropdown>
+                                </Menu>
+                            </Group>
+                        </>
+                    ) : (
+                        (location.pathname !== '/login' && location.pathname !== '/signup') && 
+                        <Button component={RouterLink} to="/login" variant="default">Login</Button>
+                    )}
                 </Group>
             </AppShell.Header>
 
             {currentUser && (
                 <AppShell.Navbar p="md">
-                    {navLinks.map((link) => (<NavLink key={link.label} label={link.label} leftSection={<link.icon size="1rem" stroke={1.5} />} component={RouterLink} to={link.to} active={location.pathname === link.to} onClick={() => { navigate(link.to); if (mobileOpened) toggleMobile(); }}/>))}
-                    {currentUser.role === 'kid' && (<>
-                        <NavLink label="Chores" leftSection={<IconChecklist size="1rem" stroke={1.5} />} component={RouterLink} to="/chores" active={location.pathname === "/chores"} onClick={() => { navigate("/chores"); if (mobileOpened) toggleMobile(); }}/>
-                        <NavLink label="My Assigned Chores" leftSection={<IconUserCheck size="1rem" stroke={1.5} />} component={RouterLink} to="/my-assigned-chores" active={location.pathname === "/my-assigned-chores"} onClick={() => { navigate("/my-assigned-chores"); if (mobileOpened) toggleMobile(); }}/>
-                        <NavLink label="My Chore History" leftSection={<IconHistory size="1rem" stroke={1.5} />} component={RouterLink} to="/chores/history" active={location.pathname === "/chores/history"} onClick={() => { navigate("/chores/history"); if (mobileOpened) toggleMobile(); }}/>
-                        <NavLink label="My Purchase History" leftSection={<IconReceipt size="1rem" stroke={1.5} />} component={RouterLink} to="/history" active={location.pathname === "/history"} onClick={() => { navigate("/history"); if (mobileOpened) toggleMobile(); }}/>
-                        <NavLink label="Make a Request" leftSection={<IconMessagePlus size="1rem" stroke={1.5} />} component={RouterLink} to="/make-request" active={location.pathname === "/make-request"} onClick={() => { navigate("/make-request"); if (mobileOpened) toggleMobile(); }}/>
-                    </>)}
-                    {currentUser.role === 'parent' && (<>
-                        <Divider my="sm" label="Parent Zone" labelPosition="center"/>
-                        <NavLink label="Manage Chores" leftSection={<IconClipboardList size="1rem" stroke={1.5} />} component={RouterLink} to="/parent/manage-chores" active={location.pathname === "/parent/manage-chores"} onClick={() => { navigate("/parent/manage-chores"); if (mobileOpened) toggleMobile(); }}/>
-                        <NavLink label="Assign Chores" leftSection={<IconUserCheck size="1rem" stroke={1.5} />} component={RouterLink} to="/parent/assign-chores" active={location.pathname === "/parent/assign-chores"} onClick={() => { navigate("/parent/assign-chores"); if (mobileOpened) toggleMobile(); }}/>
-                        <NavLink label="Pending Requests" leftSection={<IconHourglassHigh size="1rem" stroke={1.5} />} component={RouterLink} to="/parent/pending-requests" active={location.pathname === "/parent/pending-requests"} onClick={() => { navigate("/parent/pending-requests"); if (mobileOpened) toggleMobile(); }}/>
-                        <NavLink label="Manage Feature Requests" leftSection={<IconListCheck size="1rem" stroke={1.5} />} component={RouterLink} to="/manage-requests" active={location.pathname === "/manage-requests"} onClick={() => { navigate("/manage-requests"); if (mobileOpened) toggleMobile(); }}/>
-                    </>)}
+                    <Stack gap="xs" style={{ height: '100%' }}>
+                        {/* Gemini Assistant - prominent position on mobile */}
+                        <Button
+                            fullWidth
+                            onClick={() => { 
+                                resetGeminiModal(); 
+                                openGeminiModal();
+                                if (mobileOpened) toggleMobile();
+                            }} 
+                            variant="gradient" 
+                            gradient={{ from: 'indigo', to: 'cyan' }} 
+                            leftSection={<IconMessageChatbot size={20}/>}
+                            hiddenFrom="sm"
+                            mb="sm"
+                        >
+                            Gemini Assistant
+                        </Button>
+                        
+                        {navLinks.map((link) => (
+                            <NavLink 
+                                key={link.label} 
+                                label={link.label} 
+                                leftSection={<link.icon size="1.2rem" stroke={1.5} />} 
+                                component={RouterLink} 
+                                to={link.to} 
+                                active={location.pathname === link.to} 
+                                onClick={() => { 
+                                    if (mobileOpened) toggleMobile(); 
+                                }}
+                                styles={{
+                                    label: { fontSize: '0.95rem', fontWeight: 500 },
+                                }}
+                            />
+                        ))}
+                        
+                        {currentUser.role === 'kid' && (
+                            <>
+                                <Divider my="xs" label="My Activities" labelPosition="center" />
+                                <NavLink 
+                                    label="Available Chores" 
+                                    leftSection={<IconChecklist size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/chores" 
+                                    active={location.pathname === "/chores"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink 
+                                    label="Assigned to Me" 
+                                    leftSection={<IconUserCheck size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/my-assigned-chores" 
+                                    active={location.pathname === "/my-assigned-chores"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink 
+                                    label="Chore History" 
+                                    leftSection={<IconHistory size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/chores/history" 
+                                    active={location.pathname === "/chores/history"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink 
+                                    label="Purchase History" 
+                                    leftSection={<IconReceipt size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/history" 
+                                    active={location.pathname === "/history"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink 
+                                    label="Make Request" 
+                                    leftSection={<IconMessagePlus size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/make-request" 
+                                    active={location.pathname === "/make-request"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                            </>
+                        )}
+                        
+                        {currentUser.role === 'parent' && (
+                            <>
+                                <Divider my="xs" label="Management" labelPosition="center" />
+                                <NavLink 
+                                    label="Manage Chores" 
+                                    leftSection={<IconClipboardList size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/parent/manage-chores" 
+                                    active={location.pathname === "/parent/manage-chores"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink 
+                                    label="Assign Chores" 
+                                    leftSection={<IconUserCheck size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/parent/assign-chores" 
+                                    active={location.pathname === "/parent/assign-chores"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink 
+                                    label="Pending Approvals" 
+                                    leftSection={<IconHourglassHigh size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/parent/pending-requests" 
+                                    active={location.pathname === "/parent/pending-requests"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink 
+                                    label="Feature Requests" 
+                                    leftSection={<IconListCheck size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/manage-requests" 
+                                    active={location.pathname === "/manage-requests"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                            </>
+                        )}
+                        
+                        {/* User info at bottom on mobile */}
+                        <Box mt="auto" pt="md" hiddenFrom="sm">
+                            <Divider mb="sm" />
+                            <Group justify="space-between">
+                                <Box>
+                                    <Text size="sm" fw={600}>{currentUser.username}</Text>
+                                    <Text size="xs" c="dimmed">{currentUser.role}</Text>
+                                    {currentUser.role === 'kid' && (
+                                        <Badge mt={4} size="sm" color="yellow">
+                                            {currentUser.points ?? 0} points
+                                        </Badge>
+                                    )}
+                                </Box>
+                                <ActionIcon 
+                                    color="red" 
+                                    variant="subtle"
+                                    onClick={handleLogout}
+                                    size="lg"
+                                    aria-label="Logout"
+                                >
+                                    <IconLogout size={20} />
+                                </ActionIcon>
+                            </Group>
+                        </Box>
+                    </Stack>
                 </AppShell.Navbar>
             )}
 
@@ -473,13 +727,72 @@ const AppWithAuthProvider = () => {
 };
 
 const theme = createTheme({
-  fontFamily: 'Open Sans, sans-serif', primaryColor: 'teal',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  primaryColor: 'indigo',
+  colors: {
+    brand: ['#f3f0ff', '#e5dbff', '#d0bfff', '#b197fc', '#9775fa', '#845ef7', '#7950f2', '#703fec', '#6741d9', '#5f3dc4'],
+  },
+  fontSizes: {
+    xs: '0.875rem',
+    sm: '0.95rem',
+    md: '1.05rem',
+    lg: '1.2rem',
+    xl: '1.4rem',
+  },
   components: {
-    Button: { defaultProps: { radius: 'md' }},
-    Paper: { defaultProps: { radius: 'md' }},
-    Title: { styles: (theme: MantineTheme) => ({ root: {} })},
+    Button: { 
+      defaultProps: { radius: 'md' },
+      styles: {
+        root: {
+          transition: 'all 0.2s ease',
+          '&:hover': {
+            transform: 'translateY(-1px)',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+          },
+        },
+      },
+    },
+    Paper: { 
+      defaultProps: { radius: 'md' },
+      styles: {
+        root: {
+          transition: 'all 0.2s ease',
+        },
+      },
+    },
+    Card: {
+      styles: {
+        root: {
+          transition: 'all 0.2s ease',
+        },
+      },
+    },
+    NavLink: {
+      styles: {
+        root: {
+          borderRadius: '8px',
+          transition: 'all 0.2s ease',
+          '&:hover': {
+            backgroundColor: 'var(--mantine-color-indigo-0)',
+          },
+          '&[data-active]': {
+            backgroundColor: 'var(--mantine-color-indigo-1)',
+            color: 'var(--mantine-color-indigo-7)',
+            fontWeight: 600,
+          },
+        },
+      },
+    },
+    Title: { styles: (theme: MantineTheme) => ({ root: { fontWeight: 700 } })},
     Textarea: { defaultProps: { radius: 'sm' }},
-  }
+  },
+  other: {
+    transitions: {
+      fast: '0.15s ease',
+      normal: '0.2s ease',
+      slow: '0.3s ease',
+    },
+  },
 });
 
 const AppWrapper = () => (

@@ -367,26 +367,26 @@ async def get_my_detailed_chore_history(
     Kid retrieves their own chore history with streak bonus information.
     """
     chore_logs = crud.get_chore_logs_by_kid_id(kid_id=current_kid.id)
-    
+
     # Filter for approved chores and sort by date
     approved_logs = [log for log in chore_logs if log.status == models.ChoreStatus.APPROVED]
     approved_logs.sort(key=lambda x: x.submitted_at)
-    
+
     # Track which dates have been processed and current streak
     processed_dates = set()
     streak_milestones = {3: 10, 7: 25, 14: 50, 30: 100}
     detailed_logs = []
     current_streak = 0
     last_date = None
-    
+
     for log in approved_logs:
         log_date = log.submitted_at.date()
         log_dict = log.dict()
-        
+
         # Check if this is a new day
         if log_date not in processed_dates:
             processed_dates.add(log_date)
-            
+
             # Check if streak continues or breaks
             if last_date is None:
                 current_streak = 1
@@ -394,7 +394,7 @@ async def get_my_detailed_chore_history(
                 current_streak += 1
             elif (log_date - last_date).days > 1:
                 current_streak = 1
-            
+
             # Check if this day hits a milestone
             if current_streak in streak_milestones:
                 log_dict["streak_bonus_points"] = streak_milestones[current_streak]
@@ -402,18 +402,18 @@ async def get_my_detailed_chore_history(
             else:
                 log_dict["streak_bonus_points"] = None
                 log_dict["streak_day"] = current_streak
-            
+
             last_date = log_date
         else:
             # Same day, no streak bonus
             log_dict["streak_bonus_points"] = None
             log_dict["streak_day"] = None
-        
+
         detailed_logs.append(ChoreLogWithStreakBonus(**log_dict))
-    
+
     # Sort by date descending (newest first) for display
     detailed_logs.sort(key=lambda x: x.submitted_at, reverse=True)
-    
+
     return detailed_logs
 
 
