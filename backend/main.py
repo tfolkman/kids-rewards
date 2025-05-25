@@ -5,7 +5,7 @@ import asyncio
 import logging
 import os
 from datetime import timedelta
-from typing import List  # noqa: UP035
+from typing import List, Optional  # noqa: UP035
 
 from dotenv import load_dotenv
 
@@ -720,3 +720,148 @@ async def reject_feature_request(
         f"Request {request_id} rejected successfully by parent {current_parent.username}. New status: {updated_request.status.value}"
     )
     return updated_request
+
+
+# --- Chore Assignment Endpoints ---
+
+
+# Data models for API requests
+class ChoreAssignmentRequest(models.BaseModel):
+    chore_id: str
+    assigned_to_kid_id: str  # Kid's username
+    due_date: str  # ISO date string
+    notes: Optional[str] = None
+
+
+class ChoreAssignmentActionRequest(models.BaseModel):
+    assignment_id: str
+
+
+# Parent - Assign chore to kid
+@app.post("/parent/chore-assignments/", response_model=models.ChoreAssignment, status_code=status.HTTP_201_CREATED)
+async def assign_chore_to_kid(
+    assignment_request: ChoreAssignmentRequest,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Parent assigns a chore to a specific kid with a due date.
+    """
+    try:
+        # Parse the due date
+        from datetime import datetime
+
+        due_date = datetime.fromisoformat(assignment_request.due_date.replace("Z", "+00:00"))
+
+        assignment_create = models.ChoreAssignmentCreate(
+            chore_id=assignment_request.chore_id,
+            assigned_to_kid_id=assignment_request.assigned_to_kid_id,
+            due_date=due_date,
+            notes=assignment_request.notes,
+        )
+
+        return crud.create_chore_assignment(assignment_in=assignment_create, parent_id=current_parent.id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid due date format: {e}")
+
+
+# Kid - Get assigned chores
+@app.get("/kids/my-assignments/", response_model=List[models.ChoreAssignment])  # noqa: UP006
+async def get_my_assigned_chores(
+    current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+):
+    """
+    Kid retrieves their assigned chores.
+    """
+    return crud.get_assignments_by_kid_id(kid_id=current_kid.username)
+
+
+# Kid - Submit assignment completion
+@app.post(
+    "/chore-assignments/{assignment_id}/submit",
+    response_model=models.ChoreAssignment,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def submit_assignment_completion(
+    assignment_id: str,
+    submission_data: models.ChoreAssignmentSubmission,
+    current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+):
+    """
+    Kid submits completion of an assigned chore.
+    """
+    assignment = crud.submit_assignment_completion(
+        assignment_id=assignment_id, kid_user=current_kid, submission_notes=submission_data.submission_notes
+    )
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not submit assignment completion."
+        )
+    return assignment
+
+
+# Parent - Get pending assignment submissions
+@app.get("/parent/assignment-submissions/pending", response_model=List[models.ChoreAssignment])  # noqa: UP006
+async def get_pending_assignment_submissions_for_my_assignments(
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Parent retrieves all SUBMITTED assignment submissions for assignments they created.
+    """
+    return crud.get_assignments_by_status_for_parent(
+        status=models.ChoreAssignmentStatus.SUBMITTED, parent_id=current_parent.id
+    )
+
+
+# Parent - Approve assignment submission
+@app.post("/parent/assignment-submissions/approve", response_model=models.ChoreAssignment)
+async def approve_assignment_submission(
+    request_data: ChoreAssignmentActionRequest,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Parent approves an assignment submission. Points are awarded to the kid.
+    Only the parent who created the assignment can approve.
+    """
+    approved_assignment = crud.update_assignment_status(
+        assignment_id=request_data.assignment_id,
+        new_status=models.ChoreAssignmentStatus.APPROVED,
+        parent_user=current_parent,
+    )
+    if not approved_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to approve assignment submission."
+        )
+    return approved_assignment
+
+
+# Parent - Reject assignment submission
+@app.post("/parent/assignment-submissions/reject", response_model=models.ChoreAssignment)
+async def reject_assignment_submission(
+    request_data: ChoreAssignmentActionRequest,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Parent rejects an assignment submission.
+    Only the parent who created the assignment can reject.
+    """
+    rejected_assignment = crud.update_assignment_status(
+        assignment_id=request_data.assignment_id,
+        new_status=models.ChoreAssignmentStatus.REJECTED,
+        parent_user=current_parent,
+    )
+    if not rejected_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to reject assignment submission."
+        )
+    return rejected_assignment
+
+
+# Parent - Get all assignments (for management)
+@app.get("/parent/chore-assignments/", response_model=List[models.ChoreAssignment])  # noqa: UP006
+async def get_my_chore_assignments(
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Parent retrieves all chore assignments they have created.
+    """
+    return crud.get_assignments_by_parent_id(parent_id=current_parent.id)

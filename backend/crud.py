@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from datetime import datetime
@@ -23,6 +24,9 @@ PURCHASE_LOGS_TABLE_NAME = os.getenv("PURCHASE_LOGS_TABLE_NAME", "KidsRewardsPur
 CHORES_TABLE_NAME = os.getenv("CHORES_TABLE_NAME", "KidsRewardsChores")
 CHORE_LOGS_TABLE_NAME = os.getenv("CHORE_LOGS_TABLE_NAME", "KidsRewardsChoreLogs")
 REQUESTS_TABLE_NAME = os.getenv("REQUESTS_TABLE_NAME", "KidsRewardsRequests")  # New table for requests
+CHORE_ASSIGNMENTS_TABLE_NAME = os.getenv(
+    "CHORE_ASSIGNMENTS_TABLE_NAME", "KidsRewardsChoreAssignments"
+)  # New table for chore assignments
 
 if DYNAMODB_ENDPOINT_OVERRIDE:
     dynamodb = boto3.resource("dynamodb", endpoint_url=DYNAMODB_ENDPOINT_OVERRIDE, region_name=AWS_REGION)
@@ -36,6 +40,10 @@ purchase_logs_table = dynamodb.Table(PURCHASE_LOGS_TABLE_NAME)
 chores_table = dynamodb.Table(CHORES_TABLE_NAME)
 chore_logs_table = dynamodb.Table(CHORE_LOGS_TABLE_NAME)
 requests_table = dynamodb.Table(REQUESTS_TABLE_NAME)  # New table resource for requests
+chore_assignments_table = dynamodb.Table(CHORE_ASSIGNMENTS_TABLE_NAME)  # New table resource for chore assignments
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 # Helper to convert Decimals from DynamoDB to int/float for Pydantic models
@@ -739,50 +747,77 @@ def update_chore_log_status(
 
 
 def get_chore_logs_by_kid_id(kid_id: str) -> List[models.ChoreLog]:  # noqa: UP006
+    chore_logs = []
     try:
-        # Requires GSI on 'kid_id' and 'submitted_at' for sorting.
-        # GSI: IndexName='KidChoreLogIndex', HashKey='kid_id', RangeKey='submitted_at'
-        response = chore_logs_table.query(
+        # Fetch from chore_logs_table
+        response_logs = chore_logs_table.query(
             IndexName="KidChoreLogIndex",  # Assumed GSI
             KeyConditionExpression=Key("kid_id").eq(kid_id),
             ScanIndexForward=False,  # Newest first
         )
-        items = response.get("Items", [])
-        return [models.ChoreLog(**replace_decimals(item)) for item in items]
+        items_logs = response_logs.get("Items", [])
+        chore_logs.extend([models.ChoreLog(**replace_decimals(item)) for item in items_logs])
     except ClientError as e:
         if e.response["Error"]["Code"] == "ResourceNotFoundException":
-            print(f"Warning: GSI 'KidChoreLogIndex' not found. Falling back to scan for kid_id '{kid_id}'.")
-            all_logs = get_all_chore_logs_scan_fallback()
-            filtered_logs = [log for log in all_logs if log.kid_id == kid_id]
-            return sorted(filtered_logs, key=lambda x: x.submitted_at, reverse=True)
-        print(f"Error getting chore logs for kid {kid_id}: {e}")
-        return []
+            print(
+                f"Warning: GSI 'KidChoreLogIndex' not found for chore_logs_table. Falling back to scan for kid_id '{kid_id}'."
+            )
+            # Assuming get_all_chore_logs_scan_fallback is defined elsewhere in the file
+            all_logs_from_scan = get_all_chore_logs_scan_fallback()
+            chore_logs.extend([log for log in all_logs_from_scan if log.kid_id == kid_id])
+        else:
+            print(f"Error getting chore logs for kid {kid_id}: {e}")
+            # Don't return yet, try to get assignments
+
+    try:
+        # Fetch approved chore assignments from chore_assignments_table
+        response_assignments = chore_assignments_table.query(
+            IndexName="KidAssignmentsIndex",  # Assumed GSI
+            KeyConditionExpression=Key("assigned_to_kid_id").eq(kid_id),
+            FilterExpression=boto3.dynamodb.conditions.Attr("assignment_status").eq(
+                models.ChoreAssignmentStatus.APPROVED.value
+            ),
+        )
+        items_assignments = response_assignments.get("Items", [])
+        for item_assignment in items_assignments:
+            assignment = models.ChoreAssignment(**replace_decimals(item_assignment))
+            if assignment.reviewed_at:  # Only include if it has been reviewed (i.e., approved)
+                transformed_assignment = models.ChoreLog(
+                    id=f"assignment_{assignment.id}",
+                    chore_id=assignment.chore_id,
+                    chore_name=assignment.chore_name,
+                    kid_id=assignment.assigned_to_kid_id,
+                    kid_username=assignment.kid_username,
+                    points_value=assignment.points_value,
+                    status=models.ChoreStatus.APPROVED,
+                    submitted_at=assignment.reviewed_at,
+                    reviewed_by_parent_id=assignment.reviewed_by_parent_id,
+                    reviewed_at=assignment.reviewed_at,
+                )
+                chore_logs.append(transformed_assignment)
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print(
+                f"Warning: GSI 'KidAssignmentsIndex' not found for chore_assignments_table. Cannot fetch approved assignments for kid_id '{kid_id}'."
+            )
+        else:
+            print(f"Error getting approved chore assignments for kid {kid_id}: {e}")
+
+    chore_logs.sort(key=lambda x: x.submitted_at, reverse=True)
+    return chore_logs
 
 
 def get_chore_logs_by_status_for_parent(status: models.ChoreStatus, parent_id: str) -> List[models.ChoreLog]:  # noqa: UP006
     try:
-        # This is more complex. We need logs for chores CREATED BY this parent that have a certain status.
-        # One way:
-        # 1. Get all chores by parent_id.
-        # 2. For each chore, query chore_logs by chore_id and status. (Inefficient)
-        # Alternative: GSI on chore_logs_table: 'ChoreStatusIndex' (status HASH, submitted_at RANGE)
-        # Then filter client-side by checking original_chore.created_by_parent_id.
-
-        # Assuming GSI: IndexName='ChoreLogStatusIndex', HashKey='status', RangeKey='submitted_at'
         response = chore_logs_table.query(
-            IndexName="ChoreLogStatusIndex",  # Assumed GSI
+            IndexName="ChoreLogStatusIndex",
             KeyConditionExpression=Key("status").eq(status.value),
-            ScanIndexForward=False,  # Newest first
+            ScanIndexForward=False,
         )
         items = response.get("Items", [])
-
-        # Filter these logs to only include those where the original chore was created by the parent_id
         parent_chore_logs = []
         for item in items:
             log = models.ChoreLog(**replace_decimals(item))
-            # This requires a fetch for each chore, which is not ideal.
-            # A better approach might be to denormalize created_by_parent_id onto the chore_log itself.
-            # For now, let's do the fetch.
             chore = get_chore_by_id(log.chore_id)
             if chore and chore.created_by_parent_id == parent_id:
                 parent_chore_logs.append(log)
@@ -790,12 +825,11 @@ def get_chore_logs_by_status_for_parent(status: models.ChoreStatus, parent_id: s
     except ClientError as e:
         if e.response["Error"]["Code"] == "ResourceNotFoundException":
             print(f"Warning: GSI 'ChoreLogStatusIndex' not found. Falling back to scan for status '{status.value}'.")
-            # Fallback: Get all logs, then filter
             all_logs = get_all_chore_logs_scan_fallback()
             filtered_logs = []
             for log in all_logs:
                 if log.status == status:
-                    chore = get_chore_by_id(log.chore_id)  # Still need this check
+                    chore = get_chore_by_id(log.chore_id)
                     if chore and chore.created_by_parent_id == parent_id:
                         filtered_logs.append(log)
             return sorted(filtered_logs, key=lambda x: x.submitted_at, reverse=True)
@@ -814,10 +848,6 @@ def get_all_chore_logs_scan_fallback() -> List[models.ChoreLog]:  # noqa: UP006
     except ClientError as e:
         print(f"Error scanning all chore logs (fallback): {e}")
         return []
-
-        # It might be beneficial to add 'created_by_parent_id' to ChoreLog items
-        # to simplify queries like get_chore_logs_by_status_for_parent.
-        # This would be denormalization. If added, update ChoreLog model and creation logic.
 
 
 # --- Request CRUD ---
@@ -995,4 +1025,280 @@ def update_request_status(
         # For now, return the updated request object, but log the error.
         if "updated_request" in locals():
             return updated_request
+        return None
+
+
+# --- Chore Assignment CRUD ---
+
+
+def create_chore_assignment(assignment_in: models.ChoreAssignmentCreate, parent_id: str) -> models.ChoreAssignment:
+    # Verify the chore exists and is active
+    chore = get_chore_by_id(assignment_in.chore_id)
+    if not chore or not chore.is_active:
+        raise HTTPException(status_code=404, detail="Active chore not found.")
+
+    # Verify the kid exists and is a kid
+    kid_user = get_user_by_username(assignment_in.assigned_to_kid_id)  # Using username as kid_id
+    if not kid_user or kid_user.role != models.UserRole.KID:
+        raise HTTPException(status_code=404, detail="Kid user not found.")
+
+    assignment_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow()
+
+    assignment_data = {
+        "id": assignment_id,
+        "chore_id": assignment_in.chore_id,
+        "assigned_to_kid_id": assignment_in.assigned_to_kid_id,
+        "due_date": assignment_in.due_date.isoformat(),
+        "notes": assignment_in.notes,
+        "assigned_by_parent_id": parent_id,
+        "chore_name": chore.name,
+        "kid_username": kid_user.username,
+        "points_value": Decimal(chore.points_value),
+        "assignment_status": models.ChoreAssignmentStatus.ASSIGNED.value,
+        "created_at": timestamp.isoformat(),
+        "submitted_at": None,
+        "reviewed_by_parent_id": None,
+        "reviewed_at": None,
+    }
+
+    # Remove None values for DynamoDB
+    assignment_item = {k: v for k, v in assignment_data.items() if v is not None}
+
+    try:
+        chore_assignments_table.put_item(Item=assignment_item)
+        return models.ChoreAssignment(
+            id=assignment_id,
+            chore_id=assignment_in.chore_id,
+            assigned_to_kid_id=assignment_in.assigned_to_kid_id,
+            due_date=assignment_in.due_date,
+            notes=assignment_in.notes,
+            assigned_by_parent_id=parent_id,
+            chore_name=chore.name,
+            kid_username=kid_user.username,
+            points_value=chore.points_value,
+            assignment_status=models.ChoreAssignmentStatus.ASSIGNED,
+            created_at=timestamp,
+            submitted_at=None,
+            reviewed_by_parent_id=None,
+            reviewed_at=None,
+        )
+    except ClientError as e:
+        print(f"Error creating chore assignment: {e}")
+        raise HTTPException(status_code=500, detail="Could not create chore assignment in database.") from e
+
+
+def get_assignment_by_id(assignment_id: str) -> Optional[models.ChoreAssignment]:
+    try:
+        response = chore_assignments_table.get_item(Key={"id": assignment_id})
+        item = response.get("Item")
+        if item:
+            return models.ChoreAssignment(**replace_decimals(item))
+        return None
+    except ClientError as e:
+        print(f"Error getting assignment {assignment_id}: {e}")
+        return None
+
+
+def get_assignments_by_kid_id(kid_id: str) -> List[models.ChoreAssignment]:  # noqa: UP006
+    try:
+        # Use GSI on 'assigned_to_kid_id' and 'due_date' for sorting.
+        response = chore_assignments_table.query(
+            IndexName="KidAssignmentsIndex",
+            KeyConditionExpression=Key("assigned_to_kid_id").eq(kid_id),
+            ScanIndexForward=True,  # Earliest due dates first
+        )
+        items = response.get("Items", [])
+        chore_assignments = [models.ChoreAssignment(**replace_decimals(item)) for item in items]
+        logger.info(
+            f"Querying assignments for kid_id {kid_id} using GSI 'KidAssignmentsIndex' response: {chore_assignments}"
+        )
+        return chore_assignments
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print(f"Warning: GSI 'KidAssignmentsIndex' not found. Falling back to scan for kid_id '{kid_id}'.")
+            # Fallback to scan if GSI doesn't exist
+            all_assignments = get_all_assignments_scan_fallback()
+            filtered_assignments = [
+                assignment for assignment in all_assignments if assignment.assigned_to_kid_id == kid_id
+            ]
+            return sorted(filtered_assignments, key=lambda x: x.due_date)
+        print(f"Error getting assignments for kid {kid_id}: {e}")
+        return []
+
+
+def get_assignments_by_parent_id(parent_id: str) -> List[models.ChoreAssignment]:  # noqa: UP006
+    try:
+        # Use GSI on 'assigned_by_parent_id' and 'due_date' for sorting.
+        response = chore_assignments_table.query(
+            IndexName="ParentAssignmentsIndex",
+            KeyConditionExpression=Key("assigned_by_parent_id").eq(parent_id),
+            ScanIndexForward=True,  # Earliest due dates first
+        )
+        items = response.get("Items", [])
+        return [models.ChoreAssignment(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print(f"Warning: GSI 'ParentAssignmentsIndex' not found. Falling back to scan for parent_id '{parent_id}'.")
+            # Fallback to scan if GSI doesn't exist
+            all_assignments = get_all_assignments_scan_fallback()
+            filtered_assignments = [
+                assignment for assignment in all_assignments if assignment.assigned_by_parent_id == parent_id
+            ]
+            return sorted(filtered_assignments, key=lambda x: x.due_date)
+        print(f"Error getting assignments for parent {parent_id}: {e}")
+        return []
+
+
+def get_assignments_by_status_for_parent(
+    status: models.ChoreAssignmentStatus, parent_id: str
+) -> List[models.ChoreAssignment]:  # noqa: UP006
+    try:
+        response = chore_assignments_table.query(
+            IndexName="StatusAssignmentsIndex",
+            KeyConditionExpression=Key("assignment_status").eq(status.value),
+            FilterExpression=boto3.dynamodb.conditions.Attr("assigned_by_parent_id").eq(parent_id),
+            ScanIndexForward=True,
+        )
+        items = response.get("Items", [])
+        return [models.ChoreAssignment(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'StatusAssignmentsIndex' not found. Falling back to scan.")
+            all_assignments = get_all_assignments_scan_fallback()
+            filtered_assignments = [
+                assignment
+                for assignment in all_assignments
+                if assignment.assignment_status == status and assignment.assigned_by_parent_id == parent_id
+            ]
+            return sorted(filtered_assignments, key=lambda x: x.due_date)
+        print(f"Error getting assignments by status {status} for parent {parent_id}: {e}")
+        return []
+
+
+def get_all_assignments_scan_fallback() -> List[models.ChoreAssignment]:  # noqa: UP006
+    try:
+        response = chore_assignments_table.scan()
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = chore_assignments_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+        return [models.ChoreAssignment(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error scanning all assignments (fallback): {e}")
+        return []
+
+
+def submit_assignment_completion(
+    assignment_id: str, kid_user: models.User, submission_notes: Optional[str] = None
+) -> Optional[models.ChoreAssignment]:
+    assignment = get_assignment_by_id(assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+
+    if assignment.assigned_to_kid_id != kid_user.username:  # kid_user.username is the kid_id
+        raise HTTPException(status_code=403, detail="Not authorized to submit this assignment.")
+
+    if assignment.assignment_status != models.ChoreAssignmentStatus.ASSIGNED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Assignment is not in assigned status. Current status: {assignment.assignment_status}",
+        )
+
+    submitted_at_ts = datetime.utcnow()
+
+    try:
+        # Build the update expression dynamically based on whether submission_notes is provided
+        update_expression = "SET assignment_status = :status, submitted_at = :sat"
+        expression_attribute_values = {
+            ":status": models.ChoreAssignmentStatus.SUBMITTED.value,
+            ":sat": submitted_at_ts.isoformat(),
+            ":kid_id": kid_user.username,  # For condition
+        }
+
+        if submission_notes is not None:
+            update_expression += ", submission_notes = :notes"
+            expression_attribute_values[":notes"] = submission_notes
+
+        response = chore_assignments_table.update_item(
+            Key={"id": assignment_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_attribute_values,
+            ConditionExpression="assigned_to_kid_id = :kid_id",
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.ChoreAssignment(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise HTTPException(
+                status_code=403, detail="Conditional check failed. Not authorized or assignment changed."
+            ) from e
+        print(f"Error submitting assignment {assignment_id}: {e}")
+        return None
+
+
+def update_assignment_status(
+    assignment_id: str,
+    new_status: models.ChoreAssignmentStatus,
+    parent_user: models.User,
+) -> Optional[models.ChoreAssignment]:
+    assignment = get_assignment_by_id(assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found.")
+
+    if assignment.assignment_status != models.ChoreAssignmentStatus.SUBMITTED:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Assignment is not pending approval. Current status: {assignment.assignment_status}",
+        )
+
+    # Verify the parent reviewing is the one who created the assignment
+    if assignment.assigned_by_parent_id != parent_user.id:  # parent_user.id is username
+        raise HTTPException(
+            status_code=403, detail="Not authorized to review this assignment. Assignment created by another parent."
+        )
+
+    reviewed_at_ts = datetime.utcnow()
+
+    update_expression = "SET assignment_status = :s, reviewed_by_parent_id = :pid, reviewed_at = :rat"
+    expression_attribute_values = {
+        ":s": new_status.value,
+        ":pid": parent_user.id,
+        ":rat": reviewed_at_ts.isoformat(),
+    }
+
+    if new_status == models.ChoreAssignmentStatus.APPROVED:
+        # Award points to the kid
+        kid_user_to_update = get_user_by_username(assignment.kid_username)
+        if not kid_user_to_update:
+            raise HTTPException(
+                status_code=404, detail=f"Kid user {assignment.kid_username} not found for point update."
+            )
+        # update_user_points handles adding points
+        updated_kid = update_user_points(assignment.kid_username, assignment.points_value)
+        if not updated_kid:
+            # This is a critical failure, points were not awarded.
+            # Decide on rollback or error. For now, raise error.
+            raise HTTPException(status_code=500, detail="Failed to award points to the kid.")
+    elif new_status == models.ChoreAssignmentStatus.REJECTED:
+        pass  # No points awarded
+
+    try:
+        response = chore_assignments_table.update_item(
+            Key={"id": assignment_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=expression_attribute_values,
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.ChoreAssignment(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        print(f"Error updating assignment {assignment_id} status: {e}")
+        # If points were awarded but this failed, there's an inconsistency.
+        # More robust transaction handling might be needed for production (e.g. DynamoDB Transactions).
         return None

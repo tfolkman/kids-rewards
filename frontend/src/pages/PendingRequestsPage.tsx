@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Container, Title, Table, Text, LoadingOverlay, Alert, Paper, Button, Group, Badge, Stack } from '@mantine/core';
-import { IconAlertCircle, IconChecks, IconX, IconHourglassHigh, IconClipboardCheck, IconShoppingCart, IconPlus, IconListDetails } from '@tabler/icons-react'; // Added IconShoppingCart, IconPlus, IconListDetails
+import { IconAlertCircle, IconChecks, IconX, IconHourglassHigh, IconClipboardCheck, IconShoppingCart, IconPlus, IconListDetails, IconUserCheck } from '@tabler/icons-react'; // Added IconUserCheck
 import {
     getPendingPurchaseRequests,
     approvePurchaseRequest,
@@ -11,7 +11,11 @@ import {
     getPendingFeatureRequests, // Added
     approveFeatureRequest,    // Added
     rejectFeatureRequest,     // Added
-    FeatureRequestAPI         // Added
+    getPendingAssignmentSubmissions, // Added
+    approveAssignmentSubmission,     // Added
+    rejectAssignmentSubmission,      // Added
+    FeatureRequestAPI,         // Added
+    ChoreAssignment           // Added
 } from '../services/api';
 import type { PurchaseLog, ChoreLog } from '../services/api'; // Added ChoreLog
 import { useAuth } from '../App';
@@ -19,6 +23,7 @@ import { useAuth } from '../App';
 const PendingRequestsPage = () => {
   const [purchaseRequests, setPurchaseRequests] = useState<PurchaseLog[]>([]);
   const [choreSubmissions, setChoreSubmissions] = useState<ChoreLog[]>([]);
+  const [assignmentSubmissions, setAssignmentSubmissions] = useState<ChoreAssignment[]>([]); // Added
   const [featureRequests, setFeatureRequests] = useState<FeatureRequestAPI[]>([]); // Added
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,25 +36,29 @@ const PendingRequestsPage = () => {
       setLoading(false);
       setPurchaseRequests([]);
       setChoreSubmissions([]);
+      setAssignmentSubmissions([]);
       setFeatureRequests([]); // Added
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      const [purchaseRes, choreRes, featureRes] = await Promise.all([ // Added featureRes
+      const [purchaseRes, choreRes, assignmentRes, featureRes] = await Promise.all([ // Added assignmentRes
         getPendingPurchaseRequests(),
         getPendingChoreSubmissionsForMyChores(),
+        getPendingAssignmentSubmissions(), // Added
         getPendingFeatureRequests() // Added
       ]);
       setPurchaseRequests(purchaseRes.data);
       setChoreSubmissions(choreRes.data);
+      setAssignmentSubmissions(assignmentRes.data); // Added
       setFeatureRequests(featureRes.data); // Added
     } catch (err) {
       setError('Failed to load pending requests. Please try again.');
       console.error('Error fetching pending requests:', err);
       setPurchaseRequests([]);
       setChoreSubmissions([]);
+      setAssignmentSubmissions([]);
       setFeatureRequests([]); // Added
     } finally {
       setLoading(false);
@@ -60,7 +69,7 @@ const PendingRequestsPage = () => {
     fetchAllPendingRequests();
   }, [fetchAllPendingRequests]);
 
-  const handleAction = async (id: string, action: 'approve' | 'reject', type: 'purchase' | 'chore' | 'feature_request') => {
+  const handleAction = async (id: string, action: 'approve' | 'reject', type: 'purchase' | 'chore' | 'assignment' | 'feature_request') => {
     setActionLoading(prev => ({ ...prev, [id]: true }));
     setError(null);
     try {
@@ -75,6 +84,12 @@ const PendingRequestsPage = () => {
           await approveChoreSubmission({ chore_log_id: id });
         } else {
           await rejectChoreSubmission({ chore_log_id: id });
+        }
+      } else if (type === 'assignment') { // Added
+        if (action === 'approve') {
+          await approveAssignmentSubmission({ assignment_id: id });
+        } else {
+          await rejectAssignmentSubmission({ assignment_id: id });
         }
       } else if (type === 'feature_request') { // Added
         if (action === 'approve') {
@@ -92,7 +107,7 @@ const PendingRequestsPage = () => {
     }
   };
 
-  if (loading && !purchaseRequests.length && !choreSubmissions.length && !featureRequests.length) return <LoadingOverlay visible />; // Added featureRequests.length
+  if (loading && !purchaseRequests.length && !choreSubmissions.length && !assignmentSubmissions.length && !featureRequests.length) return <LoadingOverlay visible />; // Added assignmentSubmissions.length
 
   if (currentUser?.role !== 'parent' && !loading) {
      return (
@@ -231,6 +246,81 @@ const PendingRequestsPage = () => {
                         onClick={() => handleAction(log.id, 'reject', 'chore')}
                         loading={actionLoading[log.id]}
                         disabled={actionLoading[log.id]}
+                        leftSection={<IconX size={16}/>}
+                      >
+                        Reject
+                      </Button>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
+
+        {/* Assignment Submissions Table */}
+        <Title order={2} mt="xxl" mb="md" c="indigo.7">
+            <Group><IconUserCheck size={24}/> Pending Assignment Submissions</Group>
+        </Title>
+        {loading && assignmentSubmissions.length === 0 && <Text>Loading assignment submissions...</Text>}
+        {!loading && assignmentSubmissions.length === 0 && (
+          <Text ta="center" c="dimmed" py="md">
+            No pending assignment submissions.
+          </Text>
+        )}
+        {assignmentSubmissions.length > 0 && (
+          <Table striped highlightOnHover verticalSpacing="sm" mt="md">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Submitted</Table.Th>
+                <Table.Th>Kid</Table.Th>
+                <Table.Th>Chore</Table.Th>
+                <Table.Th>Due Date</Table.Th>
+                <Table.Th ta="right">Points Value</Table.Th>
+                <Table.Th ta="center">Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {assignmentSubmissions.map((assignment) => (
+                <Table.Tr key={`assignment-${assignment.id}`}>
+                  <Table.Td>{new Date(assignment.submitted_at!).toLocaleDateString()}</Table.Td>
+                  <Table.Td>{assignment.kid_username}</Table.Td>
+                  <Table.Td>{assignment.chore_name}</Table.Td>
+                  <Table.Td>
+                    {assignment.due_date ? (
+                      <Badge 
+                        color={new Date(assignment.due_date) < new Date() ? 'red' : 'blue'} 
+                        variant="light"
+                      >
+                        {new Date(assignment.due_date).toLocaleDateString()}
+                      </Badge>
+                    ) : (
+                      <Text size="sm" c="dimmed">No due date</Text>
+                    )}
+                  </Table.Td>
+                  <Table.Td ta="right">
+                    <Badge color="green" variant="light">
+                      {assignment.points_value}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Group justify="center">
+                      <Button
+                        size="xs"
+                        color="green"
+                        onClick={() => handleAction(assignment.id, 'approve', 'assignment')}
+                        loading={actionLoading[assignment.id]}
+                        disabled={actionLoading[assignment.id]}
+                        leftSection={<IconChecks size={16}/>}
+                      >
+                        Approve
+                      </Button>
+                      <Button
+                        size="xs"
+                        color="red"
+                        onClick={() => handleAction(assignment.id, 'reject', 'assignment')}
+                        loading={actionLoading[assignment.id]}
+                        disabled={actionLoading[assignment.id]}
                         leftSection={<IconX size={16}/>}
                       >
                         Reject
