@@ -249,6 +249,14 @@ export const getChoreById = (choreId: string) => apiClient.get<Chore>(`/chores/$
 export const submitChoreCompletion = (choreId: string) => apiClient.post<ChoreLog>(`/chores/${choreId}/submit`);
 export const getMyChoreHistory = () => apiClient.get<ChoreLog[]>('/chores/history/me');
 
+// Extended ChoreLog type with streak information
+export interface ChoreLogWithStreakBonus extends ChoreLog {
+  streak_bonus_points?: number;
+  streak_day?: number;
+}
+
+export const getMyDetailedChoreHistory = () => apiClient.get<ChoreLogWithStreakBonus[]>('/chores/history/me/detailed');
+
 // Parent - Chore Submission Approval
 export const getPendingChoreSubmissionsForMyChores = () => apiClient.get<ChoreLog[]>('/parent/chore-submissions/pending');
 export const approveChoreSubmission = (data: ChoreActionRequestData) => apiClient.post<ChoreLog>('/parent/chore-submissions/approve', data);

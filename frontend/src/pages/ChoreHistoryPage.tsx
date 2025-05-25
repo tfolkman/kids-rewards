@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as api from '../services/api';
-import { ChoreLog, ChoreStatus } from '../services/api';
+import { ChoreLogWithStreakBonus, ChoreStatus } from '../services/api';
 import {
   Table,
   Text,
@@ -12,11 +12,13 @@ import {
   Stack,
   Badge,
   ScrollArea,
+  Group,
+  Tooltip,
 } from '@mantine/core';
-import { IconAlertCircle } from '@tabler/icons-react';
+import { IconAlertCircle, IconFlame } from '@tabler/icons-react';
 
 const ChoreHistoryPage: React.FC = () => {
-  const [choreHistory, setChoreHistory] = useState<ChoreLog[]>([]);
+  const [choreHistory, setChoreHistory] = useState<ChoreLogWithStreakBonus[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,13 +26,33 @@ const ChoreHistoryPage: React.FC = () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await api.getMyChoreHistory();
-      // Sort by submitted_at date, newest first
-      const sortedHistory = response.data.sort((a, b) => new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime());
-      setChoreHistory(sortedHistory);
-    } catch (err) {
-      setError('Failed to fetch chore history. Please try again.');
-      console.error(err);
+      // Try the detailed endpoint first
+      const response = await api.getMyDetailedChoreHistory();
+      // Data is already sorted by the backend (newest first)
+      setChoreHistory(response.data);
+    } catch (err: any) {
+      // If detailed endpoint fails (404), fall back to regular endpoint
+      if (err.response?.status === 404) {
+        try {
+          const fallbackResponse = await api.getMyChoreHistory();
+          // Sort by submitted_at date, newest first
+          const sortedHistory = fallbackResponse.data.sort((a, b) => 
+            new Date(b.submitted_at).getTime() - new Date(a.submitted_at).getTime()
+          );
+          // Convert to ChoreLogWithStreakBonus format (without bonus data)
+          setChoreHistory(sortedHistory.map(log => ({
+            ...log,
+            streak_bonus_points: undefined,
+            streak_day: undefined
+          })));
+        } catch (fallbackErr) {
+          setError('Failed to fetch chore history. Please try again.');
+          console.error(fallbackErr);
+        }
+      } else {
+        setError('Failed to fetch chore history. Please try again.');
+        console.error(err);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -69,7 +91,19 @@ const ChoreHistoryPage: React.FC = () => {
       <Table.Td>
         <Text fw={500}>{log.chore_name}</Text>
       </Table.Td>
-      <Table.Td ta="right">{log.points_value}</Table.Td>
+      <Table.Td ta="right">
+        <Group gap="xs" justify="flex-end">
+          <Text>{log.points_value}</Text>
+          {log.streak_bonus_points && (
+            <Tooltip label={`${log.streak_day}-day streak bonus!`}>
+              <Group gap={4}>
+                <IconFlame size={16} color="orange" />
+                <Text fw={700} c="orange">+{log.streak_bonus_points}</Text>
+              </Group>
+            </Tooltip>
+          )}
+        </Group>
+      </Table.Td>
       <Table.Td>{getStatusBadge(log.status)}</Table.Td>
       <Table.Td>
         <Text fz="sm">{new Date(log.submitted_at).toLocaleString()}</Text>
@@ -102,22 +136,49 @@ const ChoreHistoryPage: React.FC = () => {
         )}
 
         {choreHistory.length > 0 && (
-          <Paper shadow="md" radius="md" withBorder>
-            <ScrollArea>
-              <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="sm" horizontalSpacing="md" miw={700}>
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Chore Name</Table.Th>
-                    <Table.Th ta="right">Points</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    <Table.Th>Submitted At</Table.Th>
-                    <Table.Th>Reviewed At</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>{rows}</Table.Tbody>
-              </Table>
-            </ScrollArea>
-          </Paper>
+          <>
+            {/* Streak Bonus Summary */}
+            {(() => {
+              const totalStreakBonus = choreHistory.reduce((sum, log) => sum + (log.streak_bonus_points || 0), 0);
+              const streakMilestones = choreHistory.filter(log => log.streak_bonus_points).length;
+              
+              return totalStreakBonus > 0 ? (
+                <Paper p="md" shadow="xs" withBorder>
+                  <Group justify="space-between">
+                    <Group gap="xs">
+                      <IconFlame size={20} color="orange" />
+                      <Text fw={500}>Streak Bonuses Earned</Text>
+                    </Group>
+                    <Group gap="lg">
+                      <Text size="sm" c="dimmed">
+                        {streakMilestones} milestone{streakMilestones !== 1 ? 's' : ''} reached
+                      </Text>
+                      <Badge size="lg" color="orange" variant="filled">
+                        +{totalStreakBonus} bonus points
+                      </Badge>
+                    </Group>
+                  </Group>
+                </Paper>
+              ) : null;
+            })()}
+
+            <Paper shadow="md" radius="md" withBorder>
+              <ScrollArea>
+                <Table striped highlightOnHover withTableBorder withColumnBorders verticalSpacing="sm" horizontalSpacing="md" miw={700}>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Chore Name</Table.Th>
+                      <Table.Th ta="right">Points</Table.Th>
+                      <Table.Th>Status</Table.Th>
+                      <Table.Th>Submitted At</Table.Th>
+                      <Table.Th>Reviewed At</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>{rows}</Table.Tbody>
+                </Table>
+              </ScrollArea>
+            </Paper>
+          </>
         )}
       </Stack>
     </Container>

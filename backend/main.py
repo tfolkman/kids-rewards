@@ -353,6 +353,70 @@ async def get_my_chore_history(
     return crud.get_chore_logs_by_kid_id(kid_id=current_kid.id)
 
 
+class ChoreLogWithStreakBonus(models.ChoreLog):
+    """Extended ChoreLog model that includes streak bonus information"""
+    streak_bonus_points: Optional[int] = None
+    streak_day: Optional[int] = None
+
+
+@app.get("/chores/history/me/detailed", response_model=List[ChoreLogWithStreakBonus])  # noqa: UP006
+async def get_my_detailed_chore_history(
+    current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+):
+    """
+    Kid retrieves their own chore history with streak bonus information.
+    """
+    chore_logs = crud.get_chore_logs_by_kid_id(kid_id=current_kid.id)
+    
+    # Filter for approved chores and sort by date
+    approved_logs = [log for log in chore_logs if log.status == models.ChoreStatus.APPROVED]
+    approved_logs.sort(key=lambda x: x.submitted_at)
+    
+    # Track which dates have been processed and current streak
+    processed_dates = set()
+    streak_milestones = {3: 10, 7: 25, 14: 50, 30: 100}
+    detailed_logs = []
+    current_streak = 0
+    last_date = None
+    
+    for log in approved_logs:
+        log_date = log.submitted_at.date()
+        log_dict = log.dict()
+        
+        # Check if this is a new day
+        if log_date not in processed_dates:
+            processed_dates.add(log_date)
+            
+            # Check if streak continues or breaks
+            if last_date is None:
+                current_streak = 1
+            elif (log_date - last_date).days == 1:
+                current_streak += 1
+            elif (log_date - last_date).days > 1:
+                current_streak = 1
+            
+            # Check if this day hits a milestone
+            if current_streak in streak_milestones:
+                log_dict["streak_bonus_points"] = streak_milestones[current_streak]
+                log_dict["streak_day"] = current_streak
+            else:
+                log_dict["streak_bonus_points"] = None
+                log_dict["streak_day"] = current_streak
+            
+            last_date = log_date
+        else:
+            # Same day, no streak bonus
+            log_dict["streak_bonus_points"] = None
+            log_dict["streak_day"] = None
+        
+        detailed_logs.append(ChoreLogWithStreakBonus(**log_dict))
+    
+    # Sort by date descending (newest first) for display
+    detailed_logs.sort(key=lambda x: x.submitted_at, reverse=True)
+    
+    return detailed_logs
+
+
 # --- Chore Approval Endpoints (Parent) ---
 
 
@@ -773,6 +837,20 @@ async def get_my_assigned_chores(
     Kid retrieves their assigned chores.
     """
     return crud.get_assignments_by_kid_id(kid_id=current_kid.username)
+
+
+# Kid - Get streak data
+@app.get("/kids/streak/", response_model=dict)
+async def get_my_streak(
+    current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+):
+    """
+    Kid retrieves their current streak information.
+    """
+    logger.info(f"Fetching streak data for kid {current_kid.username}")
+    streak_data = crud.calculate_streak_for_kid(kid_id=current_kid.username)
+    logger.info(f"Streak data for {current_kid.username}: {streak_data}")
+    return streak_data
 
 
 # Kid - Submit assignment completion

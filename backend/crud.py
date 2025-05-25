@@ -724,6 +724,13 @@ def update_chore_log_status(
             # This is a critical failure, points were not awarded.
             # Decide on rollback or error. For now, raise error.
             raise HTTPException(status_code=500, detail="Failed to award points to the kid.")
+        
+        # Check for streak milestone and award bonus points
+        streak_data = calculate_streak_for_kid(chore_log.kid_username)
+        if streak_data["streak_active"]:
+            bonus_points = award_streak_bonus_points(chore_log.kid_username, streak_data["current_streak"])
+            if bonus_points:
+                logger.info(f"Awarded {bonus_points} streak bonus points to {chore_log.kid_username}")
     elif new_status == models.ChoreStatus.REJECTED:
         pass  # No points awarded
 
@@ -1189,6 +1196,127 @@ def get_all_assignments_scan_fallback() -> List[models.ChoreAssignment]:  # noqa
         return []
 
 
+# --- Streak Calculation ---
+
+
+def calculate_streak_for_kid(kid_id: str) -> dict:
+    """
+    Calculate the current streak and longest streak for a kid based on their chore completion history.
+    Returns: {
+        "current_streak": int,
+        "longest_streak": int,
+        "last_completion_date": Optional[str],  # ISO format date
+        "streak_active": bool
+    }
+    """
+    from datetime import timedelta
+    
+    # Get all completed chores (approved status) for the kid
+    chore_logs = get_chore_logs_by_kid_id(kid_id)
+    
+    # Filter for approved chores only and sort by date
+    approved_chores = [
+        log for log in chore_logs 
+        if log.status == models.ChoreStatus.APPROVED
+    ]
+    
+    if not approved_chores:
+        return {
+            "current_streak": 0,
+            "longest_streak": 0,
+            "last_completion_date": None,
+            "streak_active": False
+        }
+    
+    # Sort by submitted_at date (descending - newest first)
+    approved_chores.sort(key=lambda x: x.submitted_at, reverse=True)
+    
+    # Extract unique dates (only the date part, not time)
+    completion_dates = []
+    seen_dates = set()
+    for chore in approved_chores:
+        date_only = chore.submitted_at.date()
+        if date_only not in seen_dates:
+            completion_dates.append(date_only)
+            seen_dates.add(date_only)
+    
+    if not completion_dates:
+        return {
+            "current_streak": 0,
+            "longest_streak": 0,
+            "last_completion_date": None,
+            "streak_active": False
+        }
+    
+    # Calculate current streak
+    current_streak = 0
+    today = datetime.utcnow().date()
+    yesterday = today - timedelta(days=1)
+    
+    # Check if the streak is still active (completed today or yesterday)
+    if completion_dates[0] == today or completion_dates[0] == yesterday:
+        current_streak = 1
+        streak_active = True
+        
+        # Count consecutive days backwards
+        for i in range(1, len(completion_dates)):
+            expected_date = completion_dates[i-1] - timedelta(days=1)
+            if completion_dates[i] == expected_date:
+                current_streak += 1
+            else:
+                break
+    else:
+        streak_active = False
+    
+    # Calculate longest streak
+    longest_streak = current_streak if current_streak > 0 else 1
+    temp_streak = 1
+    
+    for i in range(1, len(completion_dates)):
+        expected_date = completion_dates[i-1] - timedelta(days=1)
+        if completion_dates[i] == expected_date:
+            temp_streak += 1
+            longest_streak = max(longest_streak, temp_streak)
+        else:
+            temp_streak = 1
+    
+    return {
+        "current_streak": current_streak,
+        "longest_streak": longest_streak,
+        "last_completion_date": completion_dates[0].isoformat() if completion_dates else None,
+        "streak_active": streak_active
+    }
+
+
+def award_streak_bonus_points(kid_username: str, current_streak: int) -> Optional[int]:
+    """
+    Award bonus points for streak milestones.
+    Returns the number of bonus points awarded, or None if no milestone reached.
+    """
+    # Define streak milestones and their bonus points
+    STREAK_MILESTONES = {
+        3: 10,    # 3-day streak: 10 bonus points
+        7: 25,    # 7-day streak: 25 bonus points
+        14: 50,   # 14-day streak: 50 bonus points
+        30: 100,  # 30-day streak: 100 bonus points
+    }
+    
+    # Check if current streak matches any milestone
+    bonus_points = STREAK_MILESTONES.get(current_streak)
+    
+    if bonus_points:
+        # Award the bonus points
+        updated_user = update_user_points(kid_username, bonus_points)
+        if updated_user:
+            logger.info(f"Awarded {bonus_points} streak bonus points to {kid_username} for {current_streak}-day streak")
+            return bonus_points
+        else:
+            logger.error(f"Failed to award streak bonus points to {kid_username}")
+            return None
+    
+    return None
+
+
 def submit_assignment_completion(
     assignment_id: str, kid_user: models.User, submission_notes: Optional[str] = None
 ) -> Optional[models.ChoreAssignment]:
@@ -1283,6 +1411,13 @@ def update_assignment_status(
             # This is a critical failure, points were not awarded.
             # Decide on rollback or error. For now, raise error.
             raise HTTPException(status_code=500, detail="Failed to award points to the kid.")
+        
+        # Check for streak milestone and award bonus points
+        streak_data = calculate_streak_for_kid(assignment.kid_username)
+        if streak_data["streak_active"]:
+            bonus_points = award_streak_bonus_points(assignment.kid_username, streak_data["current_streak"])
+            if bonus_points:
+                logger.info(f"Awarded {bonus_points} streak bonus points to {assignment.kid_username}")
     elif new_status == models.ChoreAssignmentStatus.REJECTED:
         pass  # No points awarded
 

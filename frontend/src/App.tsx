@@ -64,6 +64,7 @@ import MakeRequestPage from './pages/MakeRequestPage';
 import ManageRequestsPage from './pages/ManageRequestsPage';
 import MyAssignedChoresPage from './pages/MyAssignedChoresPage';
 import AssignChoresPage from './pages/AssignChoresPage';
+import { StreakDisplay } from './components/StreakDisplay';
 
 interface AuthContextType {
   currentUser: api.User | null | undefined;
@@ -181,6 +182,11 @@ const Dashboard = () => {
                 <Text component="span">Role: <Badge color={currentUser.role === 'parent' ? 'pink' : 'green'}>{currentUser.role}</Badge></Text>
                 {currentUser.role === 'kid' && <Text component="span" mt="sm" size="lg">Your Points: <Badge variant="filled" size="xl" color="yellow">{currentUser.points ?? 0}</Badge></Text>}
             </Paper>
+            {currentUser.role === 'kid' && (
+                <Box mt="lg">
+                    <StreakDisplay />
+                </Box>
+            )}
             {currentUser.role === 'parent' && (
                 <>
                     <Divider my="xl" label="Parent Controls" labelPosition="center" />
@@ -372,6 +378,7 @@ Possible intents:
                     {currentUser ? (
                         <Group>
                              <Button onClick={() => { resetGeminiModal(); openGeminiModal();}} variant="gradient" gradient={{ from: 'indigo', to: 'cyan' }} leftSection={<IconMessageChatbot size={18}/>}>Gemini Assistant</Button>
+                            {currentUser.role === 'kid' && <StreakDisplay compact />}
                             <Text>{currentUser.username} ({currentUser.role})</Text>
                             <Button onClick={handleLogout} variant="outline" color="red" leftSection={<IconLogout size={16}/>}>Logout</Button>
                         </Group>
