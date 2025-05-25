@@ -2,6 +2,30 @@
 
 Welcome to the Kids Rewards project! This guide will help you understand how to set up and work with the project in different environments: local development and production.
 
+## ✨ Features
+
+### For Kids:
+- **Points System**: Earn points by completing chores
+- **Streak Tracking**: NEW! Build daily streaks by completing chores consistently
+  - Visual streak counter with fire icon 🔥
+  - Bonus points at milestones (3, 7, 14, 30 days)
+  - Track current and longest streaks
+  - Get reminders when streaks are at risk
+- **Store**: Redeem points for rewards (requires parent approval)
+- **Leaderboard**: See how you rank against siblings
+- **Chore Management**: View available chores, assigned chores, and submit completions
+- **Request System**: Request new store items or chores
+- **Gemini AI Assistant**: Get smart suggestions for items and chores
+
+### For Parents:
+- **User Management**: Promote users to parent role
+- **Store Management**: Add, edit, or remove store items
+- **Chore Creation**: Create and manage chores with point values
+- **Chore Assignment**: Assign specific chores to kids with due dates
+- **Approval System**: Approve/reject purchase requests and chore completions
+- **Points Awards**: Give bonus points with reasons
+- **Request Management**: Review and approve kid requests for new items/chores
+
 ## 🚀 Getting Started: Local Development
 
 This section explains how to run the backend (the "brain" of the app) and the frontend (what you see and interact with in the browser) on your own computer. This is great for making changes and testing things out!

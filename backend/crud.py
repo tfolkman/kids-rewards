@@ -680,53 +680,78 @@ def get_chore_log_by_id(log_id: str) -> Optional[models.ChoreLog]:
         return None
 
 
-def update_chore_log_status(
-    log_id: str,
-    new_status: models.ChoreStatus,
-    parent_user: models.User,
-    # points_to_award: Optional[int] = None # Points are on the chore log itself
-) -> Optional[models.ChoreLog]:
-    chore_log = get_chore_log_by_id(log_id)
+def _validate_chore_log_for_update(chore_log: Optional[models.ChoreLog], parent_user: models.User) -> models.Chore:
+    """Validate chore log can be updated by the parent user."""
     if not chore_log:
         raise HTTPException(status_code=404, detail="Chore log not found.")
-    if chore_log.status not in [models.ChoreStatus.PENDING_APPROVAL]:  # Can only approve/reject pending
+
+    if chore_log.status not in [models.ChoreStatus.PENDING_APPROVAL]:
         raise HTTPException(
             status_code=400, detail=f"Chore log is not pending approval. Current status: {chore_log.status}"
         )
 
     # Verify the parent reviewing is the one who created the original chore
     original_chore = get_chore_by_id(chore_log.chore_id)
-    if not original_chore or original_chore.created_by_parent_id != parent_user.id:  # parent_user.id is username
+    if not original_chore or original_chore.created_by_parent_id != parent_user.id:
         raise HTTPException(
             status_code=403, detail="Not authorized to review this chore log. Chore created by another parent."
         )
 
-    reviewed_at_ts = datetime.utcnow()
+    return original_chore
 
+
+def _award_points_and_streak_bonus(kid_username: str, points_value: int) -> None:
+    """Award points to kid and check for streak bonuses."""
+    kid_user_to_update = get_user_by_username(kid_username)
+    if not kid_user_to_update:
+        raise HTTPException(status_code=404, detail=f"Kid user {kid_username} not found for point update.")
+
+    updated_kid = update_user_points(kid_username, points_value)
+    if not updated_kid:
+        raise HTTPException(status_code=500, detail="Failed to award points to the kid.")
+
+    # Check for streak milestone and award bonus points
+    streak_data = calculate_streak_for_kid(kid_username)
+    if streak_data["streak_active"]:
+        bonus_points = award_streak_bonus_points(kid_username, streak_data["current_streak"])
+        if bonus_points:
+            logger.info(f"Awarded {bonus_points} streak bonus points to {kid_username}")
+
+
+def _build_chore_log_update_expression(
+    new_status: models.ChoreStatus, parent_id: str, reviewed_at: datetime
+) -> tuple[str, dict, dict]:
+    """Build DynamoDB update expression for chore log status update."""
     update_expression = "SET #s = :s, reviewed_by_parent_id = :pid, reviewed_at = :rat"
     expression_attribute_values = {
         ":s": new_status.value,
-        ":pid": parent_user.id,
-        ":rat": reviewed_at_ts.isoformat(),
+        ":pid": parent_id,
+        ":rat": reviewed_at.isoformat(),
     }
     expression_attribute_names = {"#s": "status"}
+    return update_expression, expression_attribute_values, expression_attribute_names
 
+
+def update_chore_log_status(
+    log_id: str,
+    new_status: models.ChoreStatus,
+    parent_user: models.User,
+) -> Optional[models.ChoreLog]:
+    # Validate chore log
+    chore_log = get_chore_log_by_id(log_id)
+    _validate_chore_log_for_update(chore_log, parent_user)
+
+    # Build update expression
+    reviewed_at_ts = datetime.utcnow()
+    update_expression, expression_attribute_values, expression_attribute_names = _build_chore_log_update_expression(
+        new_status, parent_user.id, reviewed_at_ts
+    )
+
+    # Award points if approved
     if new_status == models.ChoreStatus.APPROVED:
-        # Award points to the kid
-        kid_user_to_update = get_user_by_username(chore_log.kid_username)
-        if not kid_user_to_update:
-            raise HTTPException(
-                status_code=404, detail=f"Kid user {chore_log.kid_username} not found for point update."
-            )
-        # update_user_points handles adding points
-        updated_kid = update_user_points(chore_log.kid_username, chore_log.points_value)
-        if not updated_kid:
-            # This is a critical failure, points were not awarded.
-            # Decide on rollback or error. For now, raise error.
-            raise HTTPException(status_code=500, detail="Failed to award points to the kid.")
-    elif new_status == models.ChoreStatus.REJECTED:
-        pass  # No points awarded
+        _award_points_and_streak_bonus(chore_log.kid_username, chore_log.points_value)
 
+    # Update database
     try:
         response = chore_logs_table.update_item(
             Key={"id": log_id},
@@ -1189,6 +1214,114 @@ def get_all_assignments_scan_fallback() -> List[models.ChoreAssignment]:  # noqa
         return []
 
 
+# --- Streak Calculation ---
+
+
+def calculate_streak_for_kid(kid_id: str) -> dict:
+    """
+    Calculate the current streak and longest streak for a kid based on their chore completion history.
+    Returns: {
+        "current_streak": int,
+        "longest_streak": int,
+        "last_completion_date": Optional[str],  # ISO format date
+        "streak_active": bool
+    }
+    """
+    from datetime import timedelta
+
+    # Get all completed chores (approved status) for the kid
+    chore_logs = get_chore_logs_by_kid_id(kid_id)
+
+    # Filter for approved chores only and sort by date
+    approved_chores = [log for log in chore_logs if log.status == models.ChoreStatus.APPROVED]
+
+    if not approved_chores:
+        return {"current_streak": 0, "longest_streak": 0, "last_completion_date": None, "streak_active": False}
+
+    # Sort by submitted_at date (descending - newest first)
+    approved_chores.sort(key=lambda x: x.submitted_at, reverse=True)
+
+    # Extract unique dates (only the date part, not time)
+    completion_dates = []
+    seen_dates = set()
+    for chore in approved_chores:
+        date_only = chore.submitted_at.date()
+        if date_only not in seen_dates:
+            completion_dates.append(date_only)
+            seen_dates.add(date_only)
+
+    if not completion_dates:
+        return {"current_streak": 0, "longest_streak": 0, "last_completion_date": None, "streak_active": False}
+
+    # Calculate current streak
+    current_streak = 0
+    today = datetime.utcnow().date()
+    yesterday = today - timedelta(days=1)
+
+    # Check if the streak is still active (completed today or yesterday)
+    if completion_dates[0] == today or completion_dates[0] == yesterday:
+        current_streak = 1
+        streak_active = True
+
+        # Count consecutive days backwards
+        for i in range(1, len(completion_dates)):
+            expected_date = completion_dates[i - 1] - timedelta(days=1)
+            if completion_dates[i] == expected_date:
+                current_streak += 1
+            else:
+                break
+    else:
+        streak_active = False
+
+    # Calculate longest streak
+    longest_streak = current_streak if current_streak > 0 else 1
+    temp_streak = 1
+
+    for i in range(1, len(completion_dates)):
+        expected_date = completion_dates[i - 1] - timedelta(days=1)
+        if completion_dates[i] == expected_date:
+            temp_streak += 1
+            longest_streak = max(longest_streak, temp_streak)
+        else:
+            temp_streak = 1
+
+    return {
+        "current_streak": current_streak,
+        "longest_streak": longest_streak,
+        "last_completion_date": completion_dates[0].isoformat() if completion_dates else None,
+        "streak_active": streak_active,
+    }
+
+
+def award_streak_bonus_points(kid_username: str, current_streak: int) -> Optional[int]:
+    """
+    Award bonus points for streak milestones.
+    Returns the number of bonus points awarded, or None if no milestone reached.
+    """
+    # Define streak milestones and their bonus points
+    STREAK_MILESTONES = {
+        3: 10,  # 3-day streak: 10 bonus points
+        7: 25,  # 7-day streak: 25 bonus points
+        14: 50,  # 14-day streak: 50 bonus points
+        30: 100,  # 30-day streak: 100 bonus points
+    }
+
+    # Check if current streak matches any milestone
+    bonus_points = STREAK_MILESTONES.get(current_streak)
+
+    if bonus_points:
+        # Award the bonus points
+        updated_user = update_user_points(kid_username, bonus_points)
+        if updated_user:
+            logger.info(f"Awarded {bonus_points} streak bonus points to {kid_username} for {current_streak}-day streak")
+            return bonus_points
+        else:
+            logger.error(f"Failed to award streak bonus points to {kid_username}")
+            return None
+
+    return None
+
+
 def submit_assignment_completion(
     assignment_id: str, kid_user: models.User, submission_notes: Optional[str] = None
 ) -> Optional[models.ChoreAssignment]:
@@ -1240,12 +1373,8 @@ def submit_assignment_completion(
         return None
 
 
-def update_assignment_status(
-    assignment_id: str,
-    new_status: models.ChoreAssignmentStatus,
-    parent_user: models.User,
-) -> Optional[models.ChoreAssignment]:
-    assignment = get_assignment_by_id(assignment_id)
+def _validate_assignment_for_update(assignment: Optional[models.ChoreAssignment], parent_user: models.User) -> None:
+    """Validate assignment can be updated by the parent user."""
     if not assignment:
         raise HTTPException(status_code=404, detail="Assignment not found.")
 
@@ -1256,36 +1385,45 @@ def update_assignment_status(
         )
 
     # Verify the parent reviewing is the one who created the assignment
-    if assignment.assigned_by_parent_id != parent_user.id:  # parent_user.id is username
+    if assignment.assigned_by_parent_id != parent_user.id:
         raise HTTPException(
             status_code=403, detail="Not authorized to review this assignment. Assignment created by another parent."
         )
 
-    reviewed_at_ts = datetime.utcnow()
 
+def _build_assignment_update_expression(
+    new_status: models.ChoreAssignmentStatus, parent_id: str, reviewed_at: datetime
+) -> tuple[str, dict]:
+    """Build DynamoDB update expression for assignment status update."""
     update_expression = "SET assignment_status = :s, reviewed_by_parent_id = :pid, reviewed_at = :rat"
     expression_attribute_values = {
         ":s": new_status.value,
-        ":pid": parent_user.id,
-        ":rat": reviewed_at_ts.isoformat(),
+        ":pid": parent_id,
+        ":rat": reviewed_at.isoformat(),
     }
+    return update_expression, expression_attribute_values
 
+
+def update_assignment_status(
+    assignment_id: str,
+    new_status: models.ChoreAssignmentStatus,
+    parent_user: models.User,
+) -> Optional[models.ChoreAssignment]:
+    # Validate assignment
+    assignment = get_assignment_by_id(assignment_id)
+    _validate_assignment_for_update(assignment, parent_user)
+
+    # Build update expression
+    reviewed_at_ts = datetime.utcnow()
+    update_expression, expression_attribute_values = _build_assignment_update_expression(
+        new_status, parent_user.id, reviewed_at_ts
+    )
+
+    # Award points if approved (reuse same function)
     if new_status == models.ChoreAssignmentStatus.APPROVED:
-        # Award points to the kid
-        kid_user_to_update = get_user_by_username(assignment.kid_username)
-        if not kid_user_to_update:
-            raise HTTPException(
-                status_code=404, detail=f"Kid user {assignment.kid_username} not found for point update."
-            )
-        # update_user_points handles adding points
-        updated_kid = update_user_points(assignment.kid_username, assignment.points_value)
-        if not updated_kid:
-            # This is a critical failure, points were not awarded.
-            # Decide on rollback or error. For now, raise error.
-            raise HTTPException(status_code=500, detail="Failed to award points to the kid.")
-    elif new_status == models.ChoreAssignmentStatus.REJECTED:
-        pass  # No points awarded
+        _award_points_and_streak_bonus(assignment.kid_username, assignment.points_value)
 
+    # Update database
     try:
         response = chore_assignments_table.update_item(
             Key={"id": assignment_id},
