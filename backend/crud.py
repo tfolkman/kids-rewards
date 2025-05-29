@@ -204,7 +204,7 @@ def get_all_users() -> list[models.User]:
         print(f"Raw data from DynamoDB: {items}")
         replaced_items = [replace_decimals(item) for item in items]
         print(f"Data after replace_decimals: {replaced_items}")
-        
+
         # Add character info to each user
         users = []
         for item in replaced_items:
@@ -212,7 +212,7 @@ def get_all_users() -> list[models.User]:
             if user_character:
                 item["character"] = user_character
             users.append(models.User(**item))
-        
+
         return users
     except ClientError as e:
         print(f"Error scanning users: {e}")
@@ -1327,7 +1327,7 @@ def create_character(character_in: models.CharacterCreate) -> models.Character:
     """Create a new character."""
     character_id = str(uuid.uuid4())
     timestamp = datetime.utcnow()
-    
+
     item = {
         "id": character_id,
         "name": character_in.name,
@@ -1338,9 +1338,9 @@ def create_character(character_in: models.CharacterCreate) -> models.Character:
         "created_at": timestamp.isoformat(),
         "is_active": True,
     }
-    
+
     item_prepared = prepare_item_for_dynamodb(item)
-    
+
     try:
         characters_table.put_item(Item=item_prepared)
         return models.Character(**item)
@@ -1353,8 +1353,7 @@ def get_all_characters() -> List[models.Character]:
     """Get all active characters."""
     try:
         response = characters_table.scan(
-            FilterExpression="is_active = :is_active",
-            ExpressionAttributeValues={":is_active": True}
+            FilterExpression="is_active = :is_active", ExpressionAttributeValues={":is_active": True}
         )
         items = response.get("Items", [])
         return [models.Character(**replace_decimals(item)) for item in items]
@@ -1423,53 +1422,55 @@ def get_user_character(user_id: str) -> Optional[models.Character]:
         item = response.get("Item")
         if not item:
             return None
-        
+
         character_id = item.get("character_id")
         if not character_id:
             return None
-            
+
         # Get the actual character
         character = get_character_by_id(character_id)
         if not character:
             return None
-            
+
         # Add user's customization if it exists
         if item.get("user_customization"):
             character.avatar_customization = models.AvatarCustomization(**item["user_customization"])
-            
+
         return character
     except ClientError as e:
         print(f"Error getting user character for {user_id}: {e}")
         return None
 
 
-def set_user_character(user_id: str, character_id: str, customization: Optional[models.AvatarCustomization] = None) -> bool:
+def set_user_character(
+    user_id: str, character_id: str, customization: Optional[models.AvatarCustomization] = None
+) -> bool:
     """Set a user's selected character with optional customization."""
     timestamp = datetime.utcnow()
-    
+
     # Verify character exists
     character = get_character_by_id(character_id)
     if not character:
         return False
-    
+
     # In this system, user_id is the username
     user = get_user_by_username(user_id)
     if not user:
         return False
-        
+
     if user.role == models.UserRole.KID and (user.points or 0) < character.unlocked_at_points:
         return False
-    
+
     item = {
         "user_id": user_id,
         "character_id": character_id,
         "selected_at": timestamp.isoformat(),
     }
-    
+
     # Add customization if provided
     if customization:
         item["user_customization"] = customization.model_dump(exclude_none=True)
-    
+
     try:
         user_characters_table.put_item(Item=prepare_item_for_dynamodb(item))
         return True
@@ -1484,13 +1485,13 @@ def get_available_characters_for_user(user_id: str) -> List[models.Character]:
     user = get_user_by_username(user_id)
     if not user:
         return []
-    
+
     all_characters = get_all_characters()
-    
+
     if user.role == models.UserRole.PARENT:
         # Parents can access all characters
         return all_characters
-    
+
     # Kids can only access characters they've unlocked
     user_points = user.points or 0
     return [char for char in all_characters if char.unlocked_at_points <= user_points]

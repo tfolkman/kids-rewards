@@ -106,6 +106,7 @@ handler = Mangum(app, lifespan="off")
 async def options_token():
     return {"message": "OK"}
 
+
 @app.post("/token", response_model=models.Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):  # noqa: B008
     username = form_data.username
@@ -954,13 +955,11 @@ async def set_my_character(
 ):
     """Set the current user's character with optional customization."""
     success = crud.set_user_character(
-        user_id=current_user.id, 
-        character_id=request.character_id,
-        customization=request.customization
+        user_id=current_user.id, character_id=request.character_id, customization=request.customization
     )
     if not success:
         raise HTTPException(
-            status_code=400, 
-            detail="Failed to set character. Character may not exist or you don't have enough points to unlock it."
+            status_code=400,
+            detail="Failed to set character. Character may not exist or you don't have enough points to unlock it.",
         )
     return {"message": "Character set successfully"}
