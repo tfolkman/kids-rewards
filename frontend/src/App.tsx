@@ -35,7 +35,9 @@ import {
     LoadingOverlay,
     MantineTheme,
     Modal,
-    Textarea
+    Textarea,
+    ThemeIcon,
+    rem
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { Notifications, notifications } from '@mantine/notifications';
@@ -44,7 +46,7 @@ import {
     IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, 
     IconReceipt, IconHourglassHigh, IconClipboardList, IconHistory, 
     IconChecklist, IconMessagePlus, IconListCheck, IconMessageChatbot,
-    IconUserCheck
+    IconUserCheck, IconSparkles
 } from '@tabler/icons-react';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -64,6 +66,7 @@ import MakeRequestPage from './pages/MakeRequestPage';
 import ManageRequestsPage from './pages/ManageRequestsPage';
 import MyAssignedChoresPage from './pages/MyAssignedChoresPage';
 import AssignChoresPage from './pages/AssignChoresPage';
+import CharactersPage from './pages/CharactersPage';
 
 interface AuthContextType {
   currentUser: api.User | null | undefined;
@@ -177,9 +180,21 @@ const Dashboard = () => {
         <Container>
             <Title order={2} my="lg">Dashboard</Title>
             <Paper p="lg" shadow="xs" withBorder>
-                <Title order={3} c={theme.primaryColor}>Welcome, {currentUser.username}!</Title>
-                <Text component="span">Role: <Badge color={currentUser.role === 'parent' ? 'pink' : 'green'}>{currentUser.role}</Badge></Text>
-                {currentUser.role === 'kid' && <Text component="span" mt="sm" size="lg">Your Points: <Badge variant="filled" size="xl" color="yellow">{currentUser.points ?? 0}</Badge></Text>}
+                <Group justify="space-between" align="flex-start">
+                    <Box>
+                        <Title order={3} c={theme.primaryColor}>Welcome, {currentUser.username}!</Title>
+                        <Text component="span">Role: <Badge color={currentUser.role === 'parent' ? 'pink' : 'green'}>{currentUser.role}</Badge></Text>
+                        {currentUser.role === 'kid' && <Text component="span" mt="sm" size="lg">Your Points: <Badge variant="filled" size="xl" color="yellow">{currentUser.points ?? 0}</Badge></Text>}
+                    </Box>
+                    {currentUser.character && (
+                        <Box ta="center">
+                            <ThemeIcon size={rem(60)} radius="xl" style={{ backgroundColor: currentUser.character.color }}>
+                                <Text size={rem(30)}>{currentUser.character.emoji}</Text>
+                            </ThemeIcon>
+                            <Text size="sm" mt="xs" fw={500}>{currentUser.character.name}</Text>
+                        </Box>
+                    )}
+                </Group>
             </Paper>
             {currentUser.role === 'parent' && (
                 <>
@@ -359,6 +374,7 @@ Possible intents:
         { icon: IconHome, label: 'Dashboard', to: '/' },
         { icon: IconShoppingCart, label: 'Store', to: '/store' },
         { icon: IconListNumbers, label: 'Leaderboard', to: '/leaderboard' },
+        { icon: IconSparkles, label: 'Characters', to: '/characters' },
     ];
 
     return (
@@ -435,6 +451,7 @@ Possible intents:
                         <Route path="/make-request" element={<MakeRequestPage />} />
                         <Route path="/manage-requests" element={<ManageRequestsPage />} />
                         <Route path="/parent/assign-chores" element={<AssignChoresPage />} />
+                        <Route path="/characters" element={<CharactersPage />} />
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>

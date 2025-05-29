@@ -32,6 +32,7 @@ export interface User {
   username: string;
   role: 'parent' | 'kid';
   points?: number;
+  character?: Character;
 }
 
 export interface UserCreate {
@@ -272,5 +273,53 @@ export const rejectFeatureRequest = (requestId: string) => apiClient.post<Featur
 
 // Gemini API
 export const askGemini = (prompt: string, question: string) => apiClient.post<{ answer: string }>('/gemini/ask', { prompt, question });
+
+// Avatar customization types
+export interface AvatarCustomization {
+  hat?: string;  // Hat style: "cap", "beanie", "wizard", "crown", etc.
+  hat_color?: string;  // Hex color for hat
+  accessory?: string;  // Accessory type: "glasses", "sunglasses", "monocle", "eyepatch", etc.
+  accessory_color?: string;  // Hex color for accessory
+  facial_hair?: string;  // Facial hair type: "mustache", "beard", "goatee", etc.
+  hair_style?: string;  // Hair style: "short", "long", "spiky", "curly", etc.
+  hair_color?: string;  // Hex color for hair
+  outfit?: string;  // Outfit type: "casual", "formal", "superhero", "ninja", etc.
+  outfit_color?: string;  // Primary color for outfit
+  background?: string;  // Background style: "plain", "stars", "clouds", "rainbow", etc.
+  background_color?: string;  // Background color
+}
+
+// Character types
+export interface Character {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  description?: string;
+  unlocked_at_points: number;
+  created_at: string;
+  is_active: boolean;
+  avatar_customization?: AvatarCustomization;
+}
+
+export interface CharacterCreate {
+  name: string;
+  emoji: string;
+  color: string;
+  description?: string;
+  unlocked_at_points: number;
+  avatar_customization?: AvatarCustomization;
+}
+
+// Character API functions
+export const createCharacter = (data: CharacterCreate) => apiClient.post<Character>('/characters/', data);
+export const getAllCharacters = () => apiClient.get<Character[]>('/characters/');
+export const getAvailableCharacters = () => apiClient.get<Character[]>('/characters/available/');
+export const getCharacterById = (characterId: string) => apiClient.get<Character>(`/characters/${characterId}`);
+export const updateCharacter = (characterId: string, data: CharacterCreate) => apiClient.put<Character>(`/characters/${characterId}`, data);
+export const deleteCharacter = (characterId: string) => apiClient.delete(`/characters/${characterId}`);
+export const getMyCharacter = () => apiClient.get<Character | null>('/users/me/character');
+export const setMyCharacter = (characterId: string, customization?: AvatarCustomization) => 
+  apiClient.post<{ message: string }>('/users/me/character', { character_id: characterId, customization });
 
 export default apiClient;

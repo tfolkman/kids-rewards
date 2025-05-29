@@ -99,8 +99,12 @@ app.add_middleware(
 
 # Lambda handler - Mangum wraps the FastAPI app
 # This 'handler' is what AWS Lambda will look for.
-handler = Mangum(app)
+handler = Mangum(app, lifespan="off")
 
+
+@app.options("/token")
+async def options_token():
+    return {"message": "OK"}
 
 @app.post("/token", response_model=models.Token)
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):  # noqa: B008
@@ -865,3 +869,98 @@ async def get_my_chore_assignments(
     Parent retrieves all chore assignments they have created.
     """
     return crud.get_assignments_by_parent_id(parent_id=current_parent.id)
+
+
+# --- Character Endpoints ---
+@app.post("/characters/", response_model=models.Character, status_code=status.HTTP_201_CREATED)
+async def create_character(
+    character: models.CharacterCreate,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Create a new character (parent only)."""
+    return crud.create_character(character_in=character)
+
+
+@app.get("/characters/", response_model=List[models.Character])  # noqa: UP006
+async def get_all_characters(
+    current_user: models.User = Depends(get_current_user),  # noqa: B008
+):
+    """Get all characters."""
+    return crud.get_all_characters()
+
+
+@app.get("/characters/available/", response_model=List[models.Character])  # noqa: UP006
+async def get_available_characters(
+    current_user: models.User = Depends(get_current_user),  # noqa: B008
+):
+    """Get characters available to the current user based on their points."""
+    return crud.get_available_characters_for_user(user_id=current_user.id)
+
+
+@app.get("/characters/{character_id}", response_model=models.Character)
+async def get_character(
+    character_id: str,
+    current_user: models.User = Depends(get_current_user),  # noqa: B008
+):
+    """Get a specific character by ID."""
+    character = crud.get_character_by_id(character_id=character_id)
+    if not character:
+        raise HTTPException(status_code=404, detail="Character not found")
+    return character
+
+
+@app.put("/characters/{character_id}", response_model=models.Character)
+async def update_character(
+    character_id: str,
+    character: models.CharacterCreate,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Update a character (parent only)."""
+    updated_character = crud.update_character(character_id=character_id, character_in=character)
+    if not updated_character:
+        raise HTTPException(status_code=404, detail="Character not found")
+    return updated_character
+
+
+@app.delete("/characters/{character_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_character(
+    character_id: str,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Delete a character (parent only)."""
+    success = crud.delete_character(character_id=character_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Character not found")
+    return None
+
+
+@app.get("/users/me/character", response_model=Optional[models.Character])
+async def get_my_character(
+    current_user: models.User = Depends(get_current_user),  # noqa: B008
+):
+    """Get the current user's selected character."""
+    return crud.get_user_character(user_id=current_user.id)
+
+
+class SetCharacterRequest(BaseModel):
+    character_id: str
+    customization: Optional[models.AvatarCustomization] = None
+
+
+@app.post("/users/me/character", status_code=status.HTTP_200_OK)
+async def set_my_character(
+    request: SetCharacterRequest,
+    current_user: models.User = Depends(get_current_user),  # noqa: B008
+):
+    """Set the current user's character with optional customization."""
+    success = crud.set_user_character(
+        user_id=current_user.id, 
+        character_id=request.character_id,
+        customization=request.customization
+    )
+    if not success:
+        raise HTTPException(
+            status_code=400, 
+            detail="Failed to set character. Character may not exist or you don't have enough points to unlock it."
+        )
+    return {"message": "Character set successfully"}

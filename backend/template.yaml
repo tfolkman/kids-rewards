@@ -7,6 +7,12 @@ Globals:
   Function:
     Timeout: 30
     MemorySize: 128
+  Api:
+    Cors:
+      AllowMethods: "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'"
+      AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+      AllowOrigin: "'*'"
+      AllowCredentials: true
 
 Parameters:
   TableNamePrefix:
@@ -49,6 +55,8 @@ Resources:
           CHORE_LOGS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChoreLogs", !Sub "${TableNamePrefix}KidsRewardsChoreLogs"]
           REQUESTS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsRequests", !Sub "${TableNamePrefix}KidsRewardsRequests"] # New Table Env Var
           CHORE_ASSIGNMENTS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChoreAssignments", !Sub "${TableNamePrefix}KidsRewardsChoreAssignments"] # New Table for Chore Assignments
+          CHARACTERS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsCharacters", !Sub "${TableNamePrefix}KidsRewardsCharacters"]
+          USER_CHARACTERS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsUserCharacters", !Sub "${TableNamePrefix}KidsRewardsUserCharacters"]
           APP_SECRET_KEY: !Ref AppSecret
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
@@ -313,6 +321,36 @@ Resources:
           ProvisionedThroughput:
             ReadCapacityUnits: 2
             WriteCapacityUnits: 2
+    DeletionPolicy: Retain
+
+  KidsRewardsCharactersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "KidsRewardsCharacters", !Sub "${TableNamePrefix}KidsRewardsCharacters"]
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+    DeletionPolicy: Retain
+
+  KidsRewardsUserCharactersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "KidsRewardsUserCharacters", !Sub "${TableNamePrefix}KidsRewardsUserCharacters"]
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
     DeletionPolicy: Retain
 
 Conditions:

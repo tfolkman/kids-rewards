@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Table, Text, LoadingOverlay, Card, ScrollArea, Avatar, Group, Badge } from '@mantine/core';
+import { Table, Text, LoadingOverlay, Card, ScrollArea, Avatar, Group, Badge, ThemeIcon } from '@mantine/core';
 import { useAuth } from '../App';  // Updated import path
 import { getLeaderboard } from '../services/api';
 import type { User } from '../services/api';  // Using existing User type
+import AvatarPreview from './AvatarPreview';
 
 const Leaderboard = () => {
   const [scores, setScores] = useState<User[]>([]);  // Using User type from API
@@ -54,7 +55,16 @@ const Leaderboard = () => {
                   </Table.Td>
                   <Table.Td>
                     <Group gap="sm">
-                      <Avatar size="md" radius="xl" /> {/* Placeholder avatar, can be customized */}
+                      {user.character ? (
+                        <AvatarPreview
+                          emoji={user.character.emoji}
+                          color={user.character.color}
+                          customization={user.character.avatar_customization}
+                          size={40}
+                        />
+                      ) : (
+                        <Avatar size="md" radius="xl" />
+                      )}
                       <Text fz="sm" fw={500}>
                         {user.username}
                       </Text>

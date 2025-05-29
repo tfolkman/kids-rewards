@@ -27,6 +27,8 @@ REQUESTS_TABLE_NAME = os.getenv("REQUESTS_TABLE_NAME", "KidsRewardsRequests")  #
 CHORE_ASSIGNMENTS_TABLE_NAME = os.getenv(
     "CHORE_ASSIGNMENTS_TABLE_NAME", "KidsRewardsChoreAssignments"
 )  # New table for chore assignments
+CHARACTERS_TABLE_NAME = os.getenv("CHARACTERS_TABLE_NAME", "KidsRewardsCharacters")
+USER_CHARACTERS_TABLE_NAME = os.getenv("USER_CHARACTERS_TABLE_NAME", "KidsRewardsUserCharacters")
 
 if DYNAMODB_ENDPOINT_OVERRIDE:
     dynamodb = boto3.resource("dynamodb", endpoint_url=DYNAMODB_ENDPOINT_OVERRIDE, region_name=AWS_REGION)
@@ -41,6 +43,8 @@ chores_table = dynamodb.Table(CHORES_TABLE_NAME)
 chore_logs_table = dynamodb.Table(CHORE_LOGS_TABLE_NAME)
 requests_table = dynamodb.Table(REQUESTS_TABLE_NAME)  # New table resource for requests
 chore_assignments_table = dynamodb.Table(CHORE_ASSIGNMENTS_TABLE_NAME)  # New table resource for chore assignments
+characters_table = dynamodb.Table(CHARACTERS_TABLE_NAME)
+user_characters_table = dynamodb.Table(USER_CHARACTERS_TABLE_NAME)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -85,7 +89,12 @@ def get_user_by_username(username: str) -> Optional[models.User]:
         response = users_table.get_item(Key={"username": username})
         item = response.get("Item")
         if item:
-            return models.User(**replace_decimals(item))
+            # Get user character if they have one
+            user_data = replace_decimals(item)
+            user_character = get_user_character(user_data.get("id"))
+            if user_character:
+                user_data["character"] = user_character
+            return models.User(**user_data)
         return None
     except ClientError as e:
         print(f"Error getting user {username}: {e}")
@@ -195,7 +204,16 @@ def get_all_users() -> list[models.User]:
         print(f"Raw data from DynamoDB: {items}")
         replaced_items = [replace_decimals(item) for item in items]
         print(f"Data after replace_decimals: {replaced_items}")
-        return [models.User(**item) for item in replaced_items]
+        
+        # Add character info to each user
+        users = []
+        for item in replaced_items:
+            user_character = get_user_character(item.get("id"))
+            if user_character:
+                item["character"] = user_character
+            users.append(models.User(**item))
+        
+        return users
     except ClientError as e:
         print(f"Error scanning users: {e}")
         return []
@@ -1302,3 +1320,177 @@ def update_assignment_status(
         # If points were awarded but this failed, there's an inconsistency.
         # More robust transaction handling might be needed for production (e.g. DynamoDB Transactions).
         return None
+
+
+# --- Character CRUD Operations ---
+def create_character(character_in: models.CharacterCreate) -> models.Character:
+    """Create a new character."""
+    character_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow()
+    
+    item = {
+        "id": character_id,
+        "name": character_in.name,
+        "emoji": character_in.emoji,
+        "color": character_in.color,
+        "description": character_in.description,
+        "unlocked_at_points": character_in.unlocked_at_points,
+        "created_at": timestamp.isoformat(),
+        "is_active": True,
+    }
+    
+    item_prepared = prepare_item_for_dynamodb(item)
+    
+    try:
+        characters_table.put_item(Item=item_prepared)
+        return models.Character(**item)
+    except ClientError as e:
+        print(f"Error creating character: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create character.")
+
+
+def get_all_characters() -> List[models.Character]:
+    """Get all active characters."""
+    try:
+        response = characters_table.scan(
+            FilterExpression="is_active = :is_active",
+            ExpressionAttributeValues={":is_active": True}
+        )
+        items = response.get("Items", [])
+        return [models.Character(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error getting characters: {e}")
+        return []
+
+
+def get_character_by_id(character_id: str) -> Optional[models.Character]:
+    """Get a character by ID."""
+    try:
+        response = characters_table.get_item(Key={"id": character_id})
+        item = response.get("Item")
+        if item:
+            return models.Character(**replace_decimals(item))
+        return None
+    except ClientError as e:
+        print(f"Error getting character {character_id}: {e}")
+        return None
+
+
+def update_character(character_id: str, character_in: models.CharacterCreate) -> Optional[models.Character]:
+    """Update a character."""
+    try:
+        response = characters_table.update_item(
+            Key={"id": character_id},
+            UpdateExpression="SET #name = :name, emoji = :emoji, color = :color, description = :description, unlocked_at_points = :unlocked_at_points",
+            ExpressionAttributeNames={"#name": "name"},
+            ExpressionAttributeValues={
+                ":name": character_in.name,
+                ":emoji": character_in.emoji,
+                ":color": character_in.color,
+                ":description": character_in.description,
+                ":unlocked_at_points": character_in.unlocked_at_points,
+            },
+            ReturnValues="ALL_NEW",
+        )
+        updated_item = response.get("Attributes")
+        if updated_item:
+            return models.Character(**replace_decimals(updated_item))
+        return None
+    except ClientError as e:
+        print(f"Error updating character {character_id}: {e}")
+        return None
+
+
+def delete_character(character_id: str) -> bool:
+    """Soft delete a character by setting is_active to False."""
+    try:
+        characters_table.update_item(
+            Key={"id": character_id},
+            UpdateExpression="SET is_active = :is_active",
+            ExpressionAttributeValues={":is_active": False},
+        )
+        return True
+    except ClientError as e:
+        print(f"Error deleting character {character_id}: {e}")
+        return False
+
+
+def get_user_character(user_id: str) -> Optional[models.Character]:
+    """Get the character selected by a user with their customization."""
+    try:
+        # Get user's character selection
+        response = user_characters_table.get_item(Key={"user_id": user_id})
+        item = response.get("Item")
+        if not item:
+            return None
+        
+        character_id = item.get("character_id")
+        if not character_id:
+            return None
+            
+        # Get the actual character
+        character = get_character_by_id(character_id)
+        if not character:
+            return None
+            
+        # Add user's customization if it exists
+        if item.get("user_customization"):
+            character.avatar_customization = models.AvatarCustomization(**item["user_customization"])
+            
+        return character
+    except ClientError as e:
+        print(f"Error getting user character for {user_id}: {e}")
+        return None
+
+
+def set_user_character(user_id: str, character_id: str, customization: Optional[models.AvatarCustomization] = None) -> bool:
+    """Set a user's selected character with optional customization."""
+    timestamp = datetime.utcnow()
+    
+    # Verify character exists
+    character = get_character_by_id(character_id)
+    if not character:
+        return False
+    
+    # In this system, user_id is the username
+    user = get_user_by_username(user_id)
+    if not user:
+        return False
+        
+    if user.role == models.UserRole.KID and (user.points or 0) < character.unlocked_at_points:
+        return False
+    
+    item = {
+        "user_id": user_id,
+        "character_id": character_id,
+        "selected_at": timestamp.isoformat(),
+    }
+    
+    # Add customization if provided
+    if customization:
+        item["user_customization"] = customization.model_dump(exclude_none=True)
+    
+    try:
+        user_characters_table.put_item(Item=prepare_item_for_dynamodb(item))
+        return True
+    except ClientError as e:
+        print(f"Error setting user character: {e}")
+        return False
+
+
+def get_available_characters_for_user(user_id: str) -> List[models.Character]:
+    """Get all characters available to a user based on their points."""
+    # In this system, user_id is the username
+    user = get_user_by_username(user_id)
+    if not user:
+        return []
+    
+    all_characters = get_all_characters()
+    
+    if user.role == models.UserRole.PARENT:
+        # Parents can access all characters
+        return all_characters
+    
+    # Kids can only access characters they've unlocked
+    user_points = user.points or 0
+    return [char for char in all_characters if char.unlocked_at_points <= user_points]

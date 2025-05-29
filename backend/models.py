@@ -25,6 +25,7 @@ class User(UserBase):  # User still has a role
     id: str  # Or int, depending on DB
     hashed_password: str
     points: Optional[int] = None  # Only applicable for kids
+    character: Optional["Character"] = None  # Character info if selected
 
     class Config:
         from_attributes = True  # For Pydantic V2
@@ -247,3 +248,49 @@ class ChoreAssignmentApprovalRequest(BaseModel):
     assignment_id: str
     approve: bool  # True to approve, False to reject
     # parent_id will be from the authenticated user
+
+
+class AvatarCustomization(BaseModel):
+    hat: Optional[str] = None  # Hat style: "cap", "beanie", "wizard", "crown", etc.
+    hat_color: Optional[str] = None  # Hex color for hat
+    accessory: Optional[str] = None  # Accessory type: "glasses", "sunglasses", "monocle", "eyepatch", etc.
+    accessory_color: Optional[str] = None  # Hex color for accessory
+    facial_hair: Optional[str] = None  # Facial hair type: "mustache", "beard", "goatee", etc.
+    hair_style: Optional[str] = None  # Hair style: "short", "long", "spiky", "curly", etc.
+    hair_color: Optional[str] = None  # Hex color for hair
+    outfit: Optional[str] = None  # Outfit type: "casual", "formal", "superhero", "ninja", etc.
+    outfit_color: Optional[str] = None  # Primary color for outfit
+    background: Optional[str] = None  # Background style: "plain", "stars", "clouds", "rainbow", etc.
+    background_color: Optional[str] = None  # Background color
+
+
+class CharacterBase(BaseModel):
+    name: str
+    emoji: str  # Emoji representation of the character
+    color: str  # Hex color code for the character theme
+    description: Optional[str] = None
+    unlocked_at_points: int = 0  # Points required to unlock this character
+    avatar_customization: Optional[AvatarCustomization] = None  # Avatar customization options
+
+
+class CharacterCreate(CharacterBase):
+    pass
+
+
+class Character(CharacterBase):
+    id: str
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    is_active: bool = True
+
+    class Config:
+        from_attributes = True
+
+
+class UserCharacterSelection(BaseModel):
+    user_id: str
+    character_id: str
+    selected_at: datetime = Field(default_factory=datetime.utcnow)
+    user_customization: Optional[AvatarCustomization] = None  # User's personal customization choices
+
+    class Config:
+        from_attributes = True
