@@ -895,7 +895,7 @@ async def get_available_characters(
     current_user: models.User = Depends(get_current_user),  # noqa: B008
 ):
     """Get characters available to the current user based on their points."""
-    return crud.get_available_characters_for_user(user_id=current_user.id)
+    return crud.get_available_characters_for_user(user_id=current_user.username)
 
 
 @app.get("/characters/{character_id}", response_model=models.Character)
@@ -940,7 +940,7 @@ async def get_my_character(
     current_user: models.User = Depends(get_current_user),  # noqa: B008
 ):
     """Get the current user's selected character."""
-    return crud.get_user_character(user_id=current_user.id)
+    return crud.get_user_character(user_id=current_user.username)
 
 
 class SetCharacterRequest(BaseModel):
@@ -955,7 +955,7 @@ async def set_my_character(
 ):
     """Set the current user's character with optional customization."""
     success = crud.set_user_character(
-        user_id=current_user.id, character_id=request.character_id, customization=request.customization
+        user_id=current_user.username, character_id=request.character_id, customization=request.customization
     )
     if not success:
         raise HTTPException(
