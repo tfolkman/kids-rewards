@@ -3,9 +3,7 @@ import {
     Container,
     Title,
     SimpleGrid,
-    Card,
     Text,
-    Badge,
     Button,
     Group,
     Modal,
@@ -16,28 +14,17 @@ import {
     Stack,
     Center,
     LoadingOverlay,
-    Alert,
     Box,
-    ActionIcon,
     rem,
     Paper,
-    ThemeIcon,
-    useMantineTheme,
     Select,
     Tabs,
     Divider,
-    BackgroundImage,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { 
     IconPlus, 
-    IconEdit, 
-    IconTrash, 
-    IconAlertCircle,
-    IconCheck,
-    IconLock,
-    IconLockOpen,
     IconSparkles,
     IconPalette,
     IconShirt,
@@ -52,7 +39,6 @@ import AmiiboCard from '../components/AmiiboCard';
 
 const CharactersPage = () => {
     const { currentUser } = useAuth();
-    const theme = useMantineTheme();
     const [characters, setCharacters] = useState<api.Character[]>([]);
     const [availableCharacters, setAvailableCharacters] = useState<api.Character[]>([]);
     const [myCharacter, setMyCharacter] = useState<api.Character | null>(null);
@@ -126,10 +112,6 @@ const CharactersPage = () => {
         { value: 'rainbow', label: '🌈 Rainbow' },
     ];
 
-    useEffect(() => {
-        loadData();
-    }, []);
-
     const loadData = async () => {
         setLoading(true);
         try {
@@ -155,6 +137,11 @@ const CharactersPage = () => {
             setLoading(false);
         }
     };
+
+    useEffect(() => {
+        loadData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // We only want to load data on mount
 
     const handleCreateOrUpdate = async () => {
         try {
