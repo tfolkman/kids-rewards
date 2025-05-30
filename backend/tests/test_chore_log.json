@@ -1,0 +1,11 @@
+{
+  "id": {"S": "test-log-pending-001"},
+  "chore_id": {"S": "test-chore-123"},
+  "chore_name": {"S": "Test Chore - Dishes"},
+  "kid_id": {"S": "testkid"},
+  "kid_username": {"S": "testkid"},
+  "points_value": {"N": "20"},
+  "status": {"S": "pending_approval"},
+  "submitted_at": {"S": "2025-05-30T04:30:00.000000"},
+  "family_id": {"S": "folkman-family"}
+}

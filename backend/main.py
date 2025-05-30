@@ -1,7 +1,7 @@
 # Assuming main.py, crud.py, models.py, security.py are all in LAMBDA_TASK_ROOT (/var/task)
 # and __init__.py makes this directory a package.
 # For Lambda containers, often direct imports work if LAMBDA_TASK_ROOT is in sys.path.
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -129,11 +129,7 @@ async def read_users_me(current_user: models.User = Depends(get_current_active_u
 
 
 @app.get("/users/", response_model=List[models.User])
-async def read_users(
-    skip: int = 0,
-    limit: int = 100,
-    current_parent: models.User = Depends(get_current_parent_user)
-):
+async def read_users(skip: int = 0, limit: int = 100, current_parent: models.User = Depends(get_current_parent_user)):
     users = crud.get_all_users(family_id=current_parent.family_id)
     return users[skip : skip + limit]
 
@@ -196,7 +192,9 @@ async def award_points_to_kid(
         username=award.kid_username, points_to_add=award.points, family_id=current_parent.family_id
     )
     if not updated_user:
-        raise HTTPException(status_code=500, detail="Could not award points. Kid user may not exist or operation failed.")
+        raise HTTPException(
+            status_code=500, detail="Could not award points. Kid user may not exist or operation failed."
+        )
     return updated_user
 
 
@@ -218,9 +216,7 @@ async def kid_redeems_item(
     if not updated_kid:
         raise HTTPException(status_code=500, detail="Failed to update kid's points. Redemption aborted.")
 
-    purchase_log = crud.create_purchase_log(
-        user=updated_kid, item=store_item, family_id=current_kid.family_id
-    )
+    purchase_log = crud.create_purchase_log(user=updated_kid, item=store_item, family_id=current_kid.family_id)
     return purchase_log
 
 
@@ -238,27 +234,20 @@ async def read_family_purchase_history(current_parent: models.User = Depends(get
 
 @app.post("/chores/", response_model=models.Chore, status_code=status.HTTP_201_CREATED)
 async def create_new_chore(
-    chore_in: models.ChoreCreate,
-    current_parent: models.User = Depends(get_current_parent_user)
+    chore_in: models.ChoreCreate, current_parent: models.User = Depends(get_current_parent_user)
 ):
-    if chore_in.family_id != current_parent.family_id:
-         raise HTTPException(status_code=400, detail="Cannot create chore for a different family.")
-    return crud.create_chore(chore_in=chore_in, family_id=current_parent.family_id)
+    return crud.create_chore(chore_in=chore_in, family_id=current_parent.family_id, parent_id=current_parent.id)
 
 
 @app.get("/chores/", response_model=List[models.Chore])
 async def get_family_chores(
-    is_active: Optional[bool] = None,
-    current_user: models.User = Depends(get_current_active_user)
+    is_active: Optional[bool] = None, current_user: models.User = Depends(get_current_active_user)
 ):
     return crud.get_chores(family_id=current_user.family_id, is_active=is_active)
 
 
 @app.get("/chores/{chore_id}", response_model=models.Chore)
-async def get_single_chore(
-    chore_id: str,
-    current_user: models.User = Depends(get_current_active_user)
-):
+async def get_single_chore(chore_id: str, current_user: models.User = Depends(get_current_active_user)):
     chore = crud.get_chore_by_id(chore_id=chore_id, family_id=current_user.family_id)
     if not chore:
         raise HTTPException(status_code=404, detail="Chore not found in this family.")
@@ -267,9 +256,7 @@ async def get_single_chore(
 
 @app.put("/chores/{chore_id}", response_model=models.Chore)
 async def update_existing_chore(
-    chore_id: str,
-    chore_update: models.ChoreUpdate,
-    current_parent: models.User = Depends(get_current_parent_user)
+    chore_id: str, chore_update: models.ChoreUpdate, current_parent: models.User = Depends(get_current_parent_user)
 ):
     updated_chore = crud.update_chore(chore_id=chore_id, chore_update=chore_update, family_id=current_parent.family_id)
     if not updated_chore:
@@ -278,10 +265,7 @@ async def update_existing_chore(
 
 
 @app.delete("/chores/{chore_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_existing_chore(
-    chore_id: str,
-    current_parent: models.User = Depends(get_current_parent_user)
-):
+async def delete_existing_chore(chore_id: str, current_parent: models.User = Depends(get_current_parent_user)):
     chore_to_delete = crud.get_chore_by_id(chore_id=chore_id, family_id=current_parent.family_id)
     if not chore_to_delete:
         raise HTTPException(status_code=404, detail="Chore not found in this family.")
@@ -294,14 +278,18 @@ async def delete_existing_chore(
 
 @app.post("/chores/log_completion/", response_model=models.ChoreLog, status_code=status.HTTP_201_CREATED)
 async def log_chore_as_completed(
-    log_in: models.ChoreLogCreate,
-    current_user: models.User = Depends(get_current_active_user)
+    log_in: models.ChoreLogCreate, current_user: models.User = Depends(get_current_active_user)
 ):
     chore_to_log = crud.get_chore_by_id(chore_id=log_in.chore_id, family_id=current_user.family_id)
     if not chore_to_log:
         raise HTTPException(status_code=404, detail="Chore not found in this family.")
 
-    kid_user = crud.get_user_by_username(username=log_in.user_id, family_id=current_user.family_id)
+    # If user_id is 'current' or not provided, use the current user
+    if log_in.user_id == "current" or not log_in.user_id:
+        kid_user = current_user
+    else:
+        kid_user = crud.get_user_by_username(username=log_in.user_id, family_id=current_user.family_id)
+
     if not kid_user or kid_user.role != models.UserRole.KID:
         raise HTTPException(status_code=404, detail="Kid user not found in this family or user is not a kid.")
 
@@ -309,40 +297,44 @@ async def log_chore_as_completed(
         chore_id=log_in.chore_id,
         user_id=kid_user.id,
         family_id=current_user.family_id,
-        completed_by_user_id=current_user.id
+        completed_by_user_id=current_user.id,
     )
 
 
 @app.get("/chores/logs/user/{user_id_param}", response_model=List[models.ChoreLog])
-async def get_chore_logs_for_a_user(
-    user_id_param: str,
-    current_parent: models.User = Depends(get_current_parent_user)
-):
+async def get_chore_logs_for_a_user(user_id_param: str, current_parent: models.User = Depends(get_current_parent_user)):
     target_user = crud.get_user_by_id(user_id_param)
     if not target_user or target_user.family_id != current_parent.family_id or target_user.role != models.UserRole.KID:
-         raise HTTPException(status_code=404, detail="Kid user not found in this family.")
+        raise HTTPException(status_code=404, detail="Kid user not found in this family.")
 
     return crud.get_chore_logs_for_user(user_id=user_id_param, family_id=current_parent.family_id)
 
 
 @app.get("/chores/logs/my/", response_model=List[models.ChoreLog])
-async def get_my_chore_logs(
-    current_kid: models.User = Depends(get_current_kid_user)
-):
+async def get_my_chore_logs(current_kid: models.User = Depends(get_current_kid_user)):
     return crud.get_chore_logs_for_user(user_id=current_kid.id, family_id=current_kid.family_id)
 
 
 @app.get("/chores/logs/family/", response_model=List[models.ChoreLog])
-async def get_all_family_chore_logs(
-    current_parent: models.User = Depends(get_current_parent_user)
-):
+async def get_all_family_chore_logs(current_parent: models.User = Depends(get_current_parent_user)):
     return crud.get_all_chore_logs_for_family(family_id=current_parent.family_id)
+
+
+@app.put("/chores/logs/{chore_log_id}/approve", response_model=models.ChoreLog)
+async def approve_chore_submission(chore_log_id: str, current_parent: models.User = Depends(get_current_parent_user)):
+    """Approve a chore submission and award points"""
+    return crud.approve_chore_log(chore_log_id=chore_log_id, parent_id=current_parent.id, family_id=current_parent.family_id)
+
+
+@app.put("/chores/logs/{chore_log_id}/reject", response_model=models.ChoreLog)
+async def reject_chore_submission(chore_log_id: str, current_parent: models.User = Depends(get_current_parent_user)):
+    """Reject a chore submission"""
+    return crud.reject_chore_log(chore_log_id=chore_log_id, parent_id=current_parent.id, family_id=current_parent.family_id)
 
 
 @app.post("/requests/", response_model=models.Request, status_code=status.HTTP_201_CREATED)
 async def submit_item_request(
-    request_in: models.RequestCreate,
-    current_kid: models.User = Depends(get_current_kid_user)
+    request_in: models.RequestCreate, current_kid: models.User = Depends(get_current_kid_user)
 ):
     store_item = crud.get_store_item_by_id(item_id=request_in.item_id, family_id=current_kid.family_id)
     if not store_item:
@@ -353,16 +345,14 @@ async def submit_item_request(
 
 @app.get("/requests/family/", response_model=List[models.Request])
 async def get_family_item_requests(
-    status_filter: Optional[models.RequestStatus] = None,
-    current_parent: models.User = Depends(get_current_parent_user)
+    status_filter: Optional[models.RequestStatus] = None, current_parent: models.User = Depends(get_current_parent_user)
 ):
     return crud.get_requests_for_family(family_id=current_parent.family_id, status=status_filter)
 
 
 @app.get("/requests/my/", response_model=List[models.Request])
 async def get_my_item_requests(
-    status_filter: Optional[models.RequestStatus] = None,
-    current_kid: models.User = Depends(get_current_kid_user)
+    status_filter: Optional[models.RequestStatus] = None, current_kid: models.User = Depends(get_current_kid_user)
 ):
     all_family_requests = crud.get_requests_for_family(family_id=current_kid.family_id, status=status_filter)
     my_requests = [req for req in all_family_requests if req.user_id == current_kid.id]
@@ -373,13 +363,13 @@ async def get_my_item_requests(
 async def update_item_request_status(
     request_id: str,
     status_update: models.RequestStatusUpdate,
-    current_parent: models.User = Depends(get_current_parent_user)
+    current_parent: models.User = Depends(get_current_parent_user),
 ):
     updated_request = crud.update_request_status(
         request_id=request_id,
         new_status=status_update.new_status,
         family_id=current_parent.family_id,
-        parent_user=current_parent
+        parent_user=current_parent,
     )
     if not updated_request:
         raise HTTPException(status_code=404, detail="Request not found or update failed.")
@@ -388,8 +378,7 @@ async def update_item_request_status(
 
 @app.post("/families/", response_model=models.Family, status_code=status.HTTP_201_CREATED)
 async def create_new_family(
-    family_in: models.FamilyCreate,
-    current_user: models.User = Depends(get_current_active_user)
+    family_in: models.FamilyCreate, current_user: models.User = Depends(get_current_active_user)
 ):
     if current_user.family_id:
         raise HTTPException(status_code=400, detail="User already belongs to a family.")
@@ -399,7 +388,9 @@ async def create_new_family(
         raise HTTPException(status_code=500, detail="Failed to create family or assign user.")
     family_details = crud.get_family_by_id(updated_user.family_id)
     if not family_details:
-        raise HTTPException(status_code=404, detail="Family created and user assigned, but could not retrieve family details.")
+        raise HTTPException(
+            status_code=404, detail="Family created and user assigned, but could not retrieve family details."
+        )
     return family_details
 
 
@@ -411,6 +402,103 @@ async def get_my_family_details(current_user: models.User = Depends(get_current_
     if not family:
         raise HTTPException(status_code=404, detail="Family details not found.")
     return family
+
+
+# --- Invitation Endpoints ---
+@app.post("/families/invitations", response_model=models.InvitationInfo)
+async def create_family_invitation(
+    invitation_in: models.InvitationCreate, current_parent: models.User = Depends(get_current_parent_user)
+):
+    """Create an invitation code for the family (parents only)"""
+    return crud.create_invitation(
+        family_id=current_parent.family_id, invitation_in=invitation_in, created_by=current_parent.username
+    )
+
+
+@app.get("/families/invitations", response_model=List[models.InvitationInfo])
+async def get_active_invitations(current_parent: models.User = Depends(get_current_parent_user)):
+    """Get all active invitation codes for the family (parents only)"""
+    family = crud.get_family_by_id(current_parent.family_id)
+    if not family or not family.invitation_codes:
+        return []
+
+    # Clean expired and format response
+    crud.clean_expired_invitations(current_parent.family_id)
+
+    # Re-fetch after cleanup
+    family = crud.get_family_by_id(current_parent.family_id)
+    if not family or not family.invitation_codes:
+        return []
+
+    invitations = []
+    for code, inv_data in family.invitation_codes.items():
+        invitations.append(
+            models.InvitationInfo(
+                code=code,
+                role=models.UserRole(inv_data["role"]),
+                expires=datetime.fromisoformat(inv_data["expires"]),
+                created_by=inv_data["created_by"],
+                created_at=datetime.fromisoformat(inv_data["created_at"]),
+            )
+        )
+
+    return invitations
+
+
+@app.delete("/families/invitations/{code}")
+async def revoke_invitation(code: str, current_parent: models.User = Depends(get_current_parent_user)):
+    """Revoke an invitation code (parents only)"""
+    success = crud.use_invitation(current_parent.family_id, code)
+    if not success:
+        raise HTTPException(status_code=404, detail="Invitation code not found")
+    return {"message": "Invitation revoked successfully"}
+
+
+@app.post("/invitations/validate")
+async def validate_invitation_code(code: str):
+    """Check if an invitation code is valid (no auth required)"""
+    result = crud.validate_invitation(code)
+    if not result:
+        return {"valid": False}
+
+    family_id, invitation_info = result
+    family = crud.get_family_by_id(family_id)
+
+    return {
+        "valid": True,
+        "family_name": family.name if family else "Unknown",
+        "role": invitation_info.role.value,
+        "expires": invitation_info.expires.isoformat(),
+    }
+
+
+# --- Family Member Management ---
+@app.get("/families/members", response_model=models.FamilyMembers)
+async def get_family_members(current_user: models.User = Depends(get_current_active_user)):
+    """Get all members of the family"""
+    if not current_user.family_id:
+        raise HTTPException(status_code=404, detail="User is not associated with any family.")
+
+    family = crud.get_family_by_id(current_user.family_id)
+    if not family:
+        raise HTTPException(status_code=404, detail="Family not found.")
+
+    members = crud.get_family_members(current_user.family_id)
+
+    return models.FamilyMembers(family=family, members=members)
+
+
+@app.delete("/families/members/{username}")
+async def remove_family_member(username: str, current_parent: models.User = Depends(get_current_parent_user)):
+    """Remove a member from the family (parents only)"""
+    if username == current_parent.username:
+        raise HTTPException(status_code=400, detail="Cannot remove yourself from the family")
+
+    success = crud.remove_family_member(current_parent.family_id, username)
+    if not success:
+        raise HTTPException(status_code=404, detail="Member not found in family")
+
+    return {"message": f"Member {username} removed from family"}
 
 
 @app.get("/")
@@ -425,6 +513,18 @@ async def get_leaderboard(current_user: models.User = Depends(get_current_active
     users = crud.get_all_users(family_id=current_user.family_id)
     sorted_users = sorted(users, key=lambda u: u.points if u.points is not None else -1, reverse=True)
     return sorted_users
+
+
+@app.put("/chores/logs/{chore_log_id}/approve", response_model=models.ChoreLog)
+async def approve_chore_submission(chore_log_id: str, current_parent: models.User = Depends(get_current_parent_user)):
+    """Approve a chore submission and award points"""
+    return crud.approve_chore_log(chore_log_id=chore_log_id, parent_id=current_parent.id, family_id=current_parent.family_id)
+
+
+@app.put("/chores/logs/{chore_log_id}/reject", response_model=models.ChoreLog)
+async def reject_chore_submission(chore_log_id: str, current_parent: models.User = Depends(get_current_parent_user)):
+    """Reject a chore submission"""
+    return crud.reject_chore_log(chore_log_id=chore_log_id, parent_id=current_parent.id, family_id=current_parent.family_id)
 
 
 @app.get("/health")

@@ -1,8 +1,10 @@
 import os
+import random
+import string
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any, Optional  # noqa: UP035
+from typing import Any, List, Optional  # noqa: UP035
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -79,6 +81,7 @@ def create_family(family_in: models.FamilyCreate) -> models.Family:
     family_data = {
         "id": family_id,
         "name": family_in.name,
+        "invitation_codes": {},  # Initialize empty invitation codes
     }
     try:
         families_table.put_item(Item=prepare_item_for_dynamodb(family_data))
@@ -97,6 +100,212 @@ def get_family_by_id(family_id: str) -> Optional[models.Family]:
         return None
     except ClientError as e:
         print(f"Error getting family {family_id}: {e}")
+        return None
+
+
+# --- Invitation CRUD ---
+def generate_invitation_code() -> str:
+    """Generate a 6-character alphanumeric code (case-insensitive)"""
+    return "".join(random.choices(string.ascii_uppercase + string.digits, k=6))
+
+
+def create_invitation(family_id: str, invitation_in: models.InvitationCreate, created_by: str) -> models.InvitationInfo:
+    """Create a new invitation code for a family"""
+    family = get_family_by_id(family_id)
+    if not family:
+        raise HTTPException(status_code=404, detail="Family not found")
+
+    # Clean up expired invitations first
+    clean_expired_invitations(family_id)
+
+    # Check rate limit (max 10 active invitations)
+    invitation_codes = family.invitation_codes or {}
+    if len(invitation_codes) >= 10:
+        raise HTTPException(status_code=429, detail="Too many active invitations (max 10)")
+
+    # Generate unique code
+    code = generate_invitation_code()
+    while code in invitation_codes:
+        code = generate_invitation_code()
+
+    # Create invitation
+    now = datetime.utcnow()
+    expires = now + timedelta(days=7)
+
+    invitation_data = {
+        "role": invitation_in.role.value,
+        "expires": expires.isoformat(),
+        "created_by": created_by,
+        "created_at": now.isoformat(),
+    }
+
+    # Update family with new invitation
+    try:
+        families_table.update_item(
+            Key={"id": family_id},
+            UpdateExpression="SET invitation_codes.#code = :inv",
+            ExpressionAttributeNames={"#code": code},
+            ExpressionAttributeValues={":inv": prepare_item_for_dynamodb(invitation_data)},
+        )
+
+        return models.InvitationInfo(
+            code=code, role=invitation_in.role, expires=expires, created_by=created_by, created_at=now
+        )
+    except ClientError as e:
+        print(f"Error creating invitation: {e}")
+        raise HTTPException(status_code=500, detail="Could not create invitation") from e
+
+
+def validate_invitation(code: str) -> Optional[tuple[str, models.InvitationInfo]]:
+    """Validate an invitation code and return (family_id, invitation_info) if valid"""
+    if not code or len(code) != 6:
+        return None
+
+    code = code.upper()  # Case insensitive
+
+    # Scan all families for the invitation code (this is okay for small scale)
+    try:
+        response = families_table.scan()
+        items = response.get("Items", [])
+
+        for item in items:
+            family_id = item.get("id")
+            invitation_codes = item.get("invitation_codes", {})
+
+            if code in invitation_codes:
+                inv_data = invitation_codes[code]
+                expires = datetime.fromisoformat(inv_data["expires"])
+
+                # Check if expired
+                if expires < datetime.utcnow():
+                    return None
+
+                invitation_info = models.InvitationInfo(
+                    code=code,
+                    role=models.UserRole(inv_data["role"]),
+                    expires=expires,
+                    created_by=inv_data["created_by"],
+                    created_at=datetime.fromisoformat(inv_data["created_at"]),
+                )
+
+                return (family_id, invitation_info)
+
+        return None
+    except Exception as e:
+        print(f"Error validating invitation: {e}")
+        return None
+
+
+def use_invitation(family_id: str, code: str) -> bool:
+    """Mark an invitation as used by removing it from the family"""
+    code = code.upper()
+
+    try:
+        families_table.update_item(
+            Key={"id": family_id},
+            UpdateExpression="REMOVE invitation_codes.#code",
+            ExpressionAttributeNames={"#code": code},
+        )
+        return True
+    except ClientError as e:
+        print(f"Error using invitation: {e}")
+        return False
+
+
+def clean_expired_invitations(family_id: str) -> None:
+    """Remove expired invitations from a family"""
+    family = get_family_by_id(family_id)
+    if not family or not family.invitation_codes:
+        return
+
+    now = datetime.utcnow()
+    codes_to_remove = []
+
+    for code, inv_data in family.invitation_codes.items():
+        expires = datetime.fromisoformat(inv_data["expires"])
+        if expires < now:
+            codes_to_remove.append(code)
+
+    # Remove expired codes
+    for code in codes_to_remove:
+        try:
+            families_table.update_item(
+                Key={"id": family_id},
+                UpdateExpression="REMOVE invitation_codes.#code",
+                ExpressionAttributeNames={"#code": code},
+            )
+        except ClientError:
+            pass  # Continue even if individual removal fails
+
+
+def get_family_members(family_id: str) -> List[models.User]:
+    """Get all users in a family"""
+    try:
+        response = users_table.scan(FilterExpression=Key("family_id").eq(family_id))
+        items = response.get("Items", [])
+
+        while "LastEvaluatedKey" in response:
+            response = users_table.scan(
+                FilterExpression=Key("family_id").eq(family_id), ExclusiveStartKey=response["LastEvaluatedKey"]
+            )
+            items.extend(response.get("Items", []))
+
+        return [models.User(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error getting family members: {e}")
+        return []
+
+
+def remove_family_member(family_id: str, username: str) -> bool:
+    """Remove a user from a family (set their family_id to None)"""
+    user = get_user_by_username(username, family_id=family_id)
+    if not user:
+        return False
+
+    try:
+        users_table.update_item(
+            Key={"username": username},
+            UpdateExpression="REMOVE family_id",
+            ConditionExpression="family_id = :fid",
+            ExpressionAttributeValues={":fid": family_id},
+        )
+        return True
+    except ClientError as e:
+        print(f"Error removing family member: {e}")
+        return False
+
+
+def assign_user_to_new_family(user_id: str, family_name: str) -> Optional[models.User]:
+    """Create a new family and assign the user as the first parent"""
+    # Find user by ID
+    try:
+        response = users_table.scan(FilterExpression=Key("id").eq(user_id))
+        items = response.get("Items", [])
+        if not items:
+            return None
+
+        user_data = items[0]
+        username = user_data["username"]
+
+        # Create new family
+        new_family = create_family(models.FamilyCreate(name=family_name))
+
+        # Update user with family_id and parent role
+        response = users_table.update_item(
+            Key={"username": username},
+            UpdateExpression="SET family_id = :fid, #r = :role",
+            ExpressionAttributeNames={"#r": "role"},
+            ExpressionAttributeValues={":fid": new_family.id, ":role": models.UserRole.PARENT.value},
+            ReturnValues="ALL_NEW",
+        )
+
+        updated_item = response.get("Attributes")
+        if updated_item:
+            return models.User(**replace_decimals(updated_item))
+        return None
+
+    except ClientError as e:
+        print(f"Error assigning user to new family: {e}")
         return None
 
 
@@ -126,18 +335,40 @@ def create_user(user_in: models.UserCreate) -> models.User:
     user_id = str(uuid.uuid4())  # Use UUID for user ID
 
     family_id_to_assign = user_in.family_id
+    user_role = models.UserRole.KID  # Default role
 
-    if user_in.family_name:
+    # Handle invitation code
+    if user_in.invitation_code:
+        if user_in.family_id or user_in.family_name:
+            raise HTTPException(status_code=400, detail="Cannot provide invitation code with family_id or family_name.")
+
+        validation_result = validate_invitation(user_in.invitation_code)
+        if not validation_result:
+            raise HTTPException(status_code=400, detail="Invalid or expired invitation code.")
+
+        family_id_to_assign, invitation_info = validation_result
+        user_role = invitation_info.role
+
+        # Use the invitation (remove it)
+        if not use_invitation(family_id_to_assign, user_in.invitation_code):
+            raise HTTPException(status_code=500, detail="Failed to process invitation.")
+
+    # Handle creating new family
+    elif user_in.family_name:
         if user_in.family_id:
             raise HTTPException(status_code=400, detail="Cannot provide both family_id and family_name.")
         new_family = create_family(models.FamilyCreate(name=user_in.family_name))
         family_id_to_assign = new_family.id
         user_role = models.UserRole.PARENT
+
+    # Handle joining existing family by ID (legacy support)
     elif family_id_to_assign:
         existing_family = get_family_by_id(family_id_to_assign)
         if not existing_family:
             raise HTTPException(status_code=404, detail=f"Family with id {family_id_to_assign} not found.")
         user_role = models.UserRole.KID
+
+    # No family specified - create as parent without family (legacy support)
     else:
         user_role = models.UserRole.PARENT
         family_id_to_assign = None
@@ -161,6 +392,29 @@ def create_user(user_in: models.UserCreate) -> models.User:
     except ClientError as e:
         print(f"Error creating user {user_in.username}: {e}")
         raise HTTPException(status_code=500, detail="Could not create user in database.") from e
+
+
+def get_user_by_id(user_id: str) -> Optional[models.User]:
+    """Get a user by their ID."""
+    try:
+        response = users_table.scan(FilterExpression=Key("id").eq(user_id))
+        items = response.get("Items", [])
+        if items:
+            return models.User(**replace_decimals(items[0]))
+        return None
+    except ClientError as e:
+        print(f"Error getting user by id {user_id}: {e}")
+        return None
+
+
+def authenticate_user(username: str, password: str) -> Optional[models.User]:
+    """Authenticate a user with username and password."""
+    user = get_user_by_username(username)
+    if not user:
+        return None
+    if not security.verify_password(password, user.hashed_password):
+        return None
+    return user
 
 
 def update_user_points(username: str, points_to_add: int, family_id: str) -> Optional[models.User]:
@@ -378,12 +632,13 @@ def get_all_purchase_logs(family_id: str) -> list[models.PurchaseLog]:  # Filter
 
 
 # --- Chore CRUD ---
-def create_chore(chore_in: models.ChoreCreate, family_id: str) -> models.Chore:
+def create_chore(chore_in: models.ChoreCreate, family_id: str, parent_id: str) -> models.Chore:
     chore_id = str(uuid.uuid4())
     chore_data = chore_in.model_dump()
     chore_data["id"] = chore_id
     chore_data["family_id"] = family_id
-    chore_data["is_active"] = True
+    chore_data["created_by_parent_id"] = parent_id
+    chore_data["is_active"] = "true"  # Store as string for GSI
     chore_data["created_at"] = datetime.utcnow().isoformat()
     chore_data["updated_at"] = datetime.utcnow().isoformat()
 
@@ -392,6 +647,7 @@ def create_chore(chore_in: models.ChoreCreate, family_id: str) -> models.Chore:
         chore_data_for_model = chore_data.copy()
         chore_data_for_model["created_at"] = datetime.fromisoformat(chore_data["created_at"])
         chore_data_for_model["updated_at"] = datetime.fromisoformat(chore_data["updated_at"])
+        chore_data_for_model["is_active"] = True  # Convert back to boolean for model
         return models.Chore(**chore_data_for_model)
     except ClientError as e:
         print(f"Error creating chore {chore_in.name} for family {family_id}: {e}")
@@ -402,7 +658,8 @@ def get_chores(family_id: str, is_active: Optional[bool] = None) -> list[models.
     try:
         filter_expressions = [Key("family_id").eq(family_id)]
         if is_active is not None:
-            filter_expressions.append(Key("is_active").eq(is_active))
+            # Convert boolean to string for DynamoDB query
+            filter_expressions.append(Key("is_active").eq("true" if is_active else "false"))
 
         final_filter_expression = filter_expressions[0]
         for i in range(1, len(filter_expressions)):
@@ -416,7 +673,14 @@ def get_chores(family_id: str, is_active: Optional[bool] = None) -> list[models.
                 ExclusiveStartKey=response["LastEvaluatedKey"],
             )
             items.extend(response.get("Items", []))
-        return [models.Chore(**replace_decimals(item)) for item in items]
+        chores = []
+        for item in items:
+            chore_data = replace_decimals(item)
+            # Convert is_active from string to boolean
+            if "is_active" in chore_data:
+                chore_data["is_active"] = chore_data["is_active"] == "true"
+            chores.append(models.Chore(**chore_data))
+        return chores
     except ClientError as e:
         print(f"Error getting chores for family {family_id}: {e}")
         return []
@@ -427,7 +691,11 @@ def get_chore_by_id(chore_id: str, family_id: str) -> Optional[models.Chore]:
         response = chores_table.get_item(Key={"id": chore_id})
         item = response.get("Item")
         if item and item.get("family_id") == family_id:
-            return models.Chore(**replace_decimals(item))
+            chore_data = replace_decimals(item)
+            # Convert is_active from string to boolean
+            if "is_active" in chore_data:
+                chore_data["is_active"] = chore_data["is_active"] == "true"
+            return models.Chore(**chore_data)
         return None
     except ClientError as e:
         print(f"Error getting chore {chore_id} for family {family_id}: {e}")
@@ -450,7 +718,11 @@ def update_chore(chore_id: str, chore_update: models.ChoreUpdate, family_id: str
         expression_attribute_names[attr_name_placeholder] = key
 
         update_expression_parts.append(f"{attr_name_placeholder} = :{key}")
-        expression_attribute_values[f":{key}"] = value
+        # Convert boolean to string for is_active field
+        if key == "is_active":
+            expression_attribute_values[f":{key}"] = "true" if value else "false"
+        else:
+            expression_attribute_values[f":{key}"] = value
 
     if not update_expression_parts:
         return existing_chore
@@ -475,7 +747,11 @@ def update_chore(chore_id: str, chore_update: models.ChoreUpdate, family_id: str
 
         updated_attributes = response.get("Attributes")
         if updated_attributes:
-            return models.Chore(**replace_decimals(updated_attributes))
+            chore_data = replace_decimals(updated_attributes)
+            # Convert is_active from string to boolean
+            if "is_active" in chore_data:
+                chore_data["is_active"] = chore_data["is_active"] == "true"
+            return models.Chore(**chore_data)
         return None
     except ClientError as e:
         if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
@@ -509,12 +785,18 @@ def log_chore_completion(
     completed_by_user_id: str,
 ) -> Optional[models.ChoreLog]:
     chore = get_chore_by_id(chore_id, family_id)
-    kid_user = get_user_by_username(user_id, family_id)
+    kid_user = get_user_by_id(user_id)
 
     if not chore or not kid_user or kid_user.role != models.UserRole.KID:
         raise HTTPException(status_code=404, detail="Chore or kid user not found, or user is not a kid.")
-    if chore.family_id != family_id or kid_user.family_id != family_id:
-        raise HTTPException(status_code=400, detail="Chore and kid must belong to the same family.")
+    # Family validation already done in get_chore_by_id and user must be in same family as caller
+    if kid_user.family_id != family_id:
+        raise HTTPException(status_code=400, detail="Kid must belong to the same family.")
+
+    # Check for existing pending submissions
+    existing_pending = get_pending_chore_logs_for_chore(chore_id, kid_user.id, family_id)
+    if existing_pending:
+        raise HTTPException(status_code=400, detail="A submission for this chore is already pending approval.")
 
     log_id = str(uuid.uuid4())
     completion_time = datetime.utcnow()
@@ -522,21 +804,21 @@ def log_chore_completion(
     log_data = {
         "id": log_id,
         "chore_id": chore_id,
-        "user_id": kid_user.id,
+        "chore_name": chore.name,
+        "kid_id": kid_user.id,
+        "kid_username": kid_user.username,
+        "points_value": chore.points_value,
+        "status": models.ChoreStatus.PENDING_APPROVAL.value,
+        "submitted_at": completion_time.isoformat(),
         "family_id": family_id,
-        "completion_time": completion_time.isoformat(),
-        "points_awarded": chore.points_reward,
-        "logged_by_user_id": completed_by_user_id,
     }
 
-    updated_kid = update_user_points(kid_user.username, chore.points_reward, family_id)
-    if not updated_kid:
-        raise HTTPException(status_code=500, detail="Failed to award points for chore completion.")
+    # Don't award points yet - wait for parent approval
 
     try:
         chore_logs_table.put_item(Item=prepare_item_for_dynamodb(log_data))
         log_data_for_model = log_data.copy()
-        log_data_for_model["completion_time"] = completion_time
+        log_data_for_model["submitted_at"] = completion_time
         return models.ChoreLog(**log_data_for_model)
     except ClientError as e:
         print(f"Error logging chore completion for chore {chore_id}, user {user_id}: {e}")
@@ -545,11 +827,11 @@ def log_chore_completion(
 
 def get_chore_logs_for_user(user_id: str, family_id: str) -> list[models.ChoreLog]:
     try:
-        response = chore_logs_table.scan(FilterExpression=Key("family_id").eq(family_id) & Key("user_id").eq(user_id))
+        response = chore_logs_table.scan(FilterExpression=Key("family_id").eq(family_id) & Key("kid_id").eq(user_id))
         items = response.get("Items", [])
         while "LastEvaluatedKey" in response:
             response = chore_logs_table.scan(
-                FilterExpression=Key("family_id").eq(family_id) & Key("user_id").eq(user_id),
+                FilterExpression=Key("family_id").eq(family_id) & Key("kid_id").eq(user_id),
                 ExclusiveStartKey=response["LastEvaluatedKey"],
             )
             items.extend(response.get("Items", []))
@@ -573,6 +855,168 @@ def get_all_chore_logs_for_family(family_id: str) -> list[models.ChoreLog]:
     except ClientError as e:
         print(f"Error getting all chore logs for family {family_id}: {e}")
         return []
+
+
+def get_pending_chore_logs_for_chore(chore_id: str, kid_id: str, family_id: str) -> list[models.ChoreLog]:
+    """Get pending chore logs for a specific chore and kid"""
+    try:
+        filter_expression = (
+            Key("family_id").eq(family_id) & 
+            Key("chore_id").eq(chore_id) & 
+            Key("kid_id").eq(kid_id) & 
+            Key("status").eq(models.ChoreStatus.PENDING_APPROVAL.value)
+        )
+        response = chore_logs_table.scan(FilterExpression=filter_expression)
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = chore_logs_table.scan(
+                FilterExpression=filter_expression,
+                ExclusiveStartKey=response["LastEvaluatedKey"],
+            )
+            items.extend(response.get("Items", []))
+        return [models.ChoreLog(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error getting pending chore logs for chore {chore_id}, kid {kid_id}: {e}")
+        return []
+
+
+def approve_chore_log(chore_log_id: str, parent_id: str, family_id: str) -> models.ChoreLog:
+    """Approve a chore submission and award points"""
+    if not chore_log_id:
+        raise HTTPException(status_code=400, detail="Chore log ID is required")
+    
+    try:
+        # Get the chore log - use scan since get_item seems to have issues with DynamoDB Local
+        print(f"Attempting to get chore log with id: {chore_log_id}")
+        
+        # Use scan to find the item (less efficient but works with DynamoDB Local)
+        scan_response = chore_logs_table.scan(
+            FilterExpression=Key("id").eq(chore_log_id)
+        )
+        
+        items = scan_response.get('Items', [])
+        if not items:
+            raise HTTPException(status_code=404, detail="Chore log not found.")
+        
+        item = items[0]
+        if item.get("family_id") != family_id:
+            raise HTTPException(status_code=404, detail="Chore log not found in your family.")
+        
+        chore_log_data = replace_decimals(item)
+        
+        # Verify it's pending approval
+        if chore_log_data["status"] != models.ChoreStatus.PENDING_APPROVAL.value:
+            raise HTTPException(status_code=400, detail="Chore submission is not pending approval.")
+        
+        # Update the chore log
+        update_time = datetime.utcnow()
+        update_expression = "SET #status = :status, reviewed_by_parent_id = :parent_id, reviewed_at = :reviewed_at"
+        expression_attribute_names = {"#status": "status"}
+        expression_attribute_values = {
+            ":status": models.ChoreStatus.APPROVED.value,
+            ":parent_id": parent_id,
+            ":reviewed_at": update_time.isoformat(),
+            ":family_id": family_id,
+        }
+        
+        response = chore_logs_table.update_item(
+            Key={"id": chore_log_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=expression_attribute_names,
+            ExpressionAttributeValues=expression_attribute_values,
+            ConditionExpression="family_id = :family_id",
+            ReturnValues="ALL_NEW",
+        )
+        
+        updated_log = response["Attributes"]
+        
+        # Award points to the kid
+        kid_id = updated_log["kid_id"]
+        points_to_award = int(updated_log["points_value"])
+        
+        # Get current user points using the proper function
+        kid_user = get_user_by_id(kid_id)
+        if not kid_user:
+            raise HTTPException(status_code=404, detail="Kid user not found.")
+        
+        current_points = int(kid_user.points or 0)
+        new_points = current_points + points_to_award
+        
+        # Update user points using the kid's username (primary key)
+        users_table.update_item(
+            Key={"username": kid_user.username},
+            UpdateExpression="SET points = :points",
+            ExpressionAttributeValues={":points": new_points},
+        )
+        
+        # Return the updated chore log
+        updated_log_data = replace_decimals(updated_log)
+        updated_log_data["reviewed_at"] = update_time
+        return models.ChoreLog(**updated_log_data)
+        
+    except ClientError as e:
+        print(f"Error approving chore log {chore_log_id}: {e}")
+        raise HTTPException(status_code=500, detail="Could not approve chore submission.") from e
+
+
+def reject_chore_log(chore_log_id: str, parent_id: str, family_id: str) -> models.ChoreLog:
+    """Reject a chore submission"""
+    if not chore_log_id:
+        raise HTTPException(status_code=400, detail="Chore log ID is required")
+    
+    try:
+        # Get the chore log - use scan since get_item seems to have issues with DynamoDB Local
+        print(f"Attempting to reject chore log with id: {chore_log_id}")
+        
+        # Use scan to find the item (less efficient but works with DynamoDB Local)
+        scan_response = chore_logs_table.scan(
+            FilterExpression=Key("id").eq(chore_log_id)
+        )
+        
+        items = scan_response.get('Items', [])
+        if not items:
+            raise HTTPException(status_code=404, detail="Chore log not found.")
+        
+        item = items[0]
+        if item.get("family_id") != family_id:
+            raise HTTPException(status_code=404, detail="Chore log not found in your family.")
+        
+        chore_log_data = replace_decimals(item)
+        
+        # Verify it's pending approval
+        if chore_log_data["status"] != models.ChoreStatus.PENDING_APPROVAL.value:
+            raise HTTPException(status_code=400, detail="Chore submission is not pending approval.")
+        
+        # Update the chore log
+        update_time = datetime.utcnow()
+        update_expression = "SET #status = :status, reviewed_by_parent_id = :parent_id, reviewed_at = :reviewed_at"
+        expression_attribute_names = {"#status": "status"}
+        expression_attribute_values = {
+            ":status": models.ChoreStatus.REJECTED.value,
+            ":parent_id": parent_id,
+            ":reviewed_at": update_time.isoformat(),
+            ":family_id": family_id,
+        }
+        
+        response = chore_logs_table.update_item(
+            Key={"id": chore_log_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames=expression_attribute_names,
+            ExpressionAttributeValues=expression_attribute_values,
+            ConditionExpression="family_id = :family_id",
+            ReturnValues="ALL_NEW",
+        )
+        
+        updated_log = response["Attributes"]
+        
+        # Return the updated chore log
+        updated_log_data = replace_decimals(updated_log)
+        updated_log_data["reviewed_at"] = update_time
+        return models.ChoreLog(**updated_log_data)
+        
+    except ClientError as e:
+        print(f"Error rejecting chore log {chore_log_id}: {e}")
+        raise HTTPException(status_code=500, detail="Could not reject chore submission.") from e
 
 
 # --- Request CRUD ---

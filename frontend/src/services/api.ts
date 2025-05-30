@@ -32,17 +32,21 @@ export interface User {
   username: string;
   role: 'parent' | 'kid';
   points?: number;
+  family_id?: string;
 }
 
 export interface UserCreate {
   username: string;
   password: string;
+  family_name?: string;      // Create new family
+  invitation_code?: string;  // Join existing family
   // role is no longer set by the client during creation
 }
 
 export interface TokenResponse {
   access_token: string;
   token_type: string;
+  family_id?: string;
 }
 
 // Store Item types
@@ -170,7 +174,7 @@ export const login = (username: string, password: string) => {
 };
 export const signup = (data: UserCreate) => apiClient.post<User>('/users/', data);
 export const getCurrentUser = () => apiClient.get<User>('/users/me/');
-export const promoteToParent = (data: UserPromoteData) => apiClient.post<User>('/users/promote-to-parent', data);
+export const promoteToParent = (data: UserPromoteData) => apiClient.post<User>('/users/promote', data);
 
 // Store Items
 export const getStoreItems = () => apiClient.get<StoreItem[]>('/store/items/');
@@ -181,29 +185,33 @@ export const getStoreItemById = (itemId: string) => apiClient.get<StoreItem>(`/s
 
 
 // Points Management
-export const awardPoints = (data: PointsAwardData) => apiClient.post<User>('/kids/award-points/', data);
-export const redeemItem = (data: RedemptionRequestData) => apiClient.post<PurchaseLog>('/kids/redeem-item/', data); // Changed return type
+export const awardPoints = (data: PointsAwardData) => apiClient.post<User>('/kids/points/award/', data);
+export const redeemItem = (data: RedemptionRequestData) => apiClient.post<PurchaseLog>('/kids/store/redeem/', data); // Changed return type
 
 export const helloWorld = () => apiClient.get<{ message: string }>('/hello');
 export const getLeaderboard = () => apiClient.get<User[]>('/leaderboard');
 
 // Purchase History
-export const getMyPurchaseHistory = () => apiClient.get<PurchaseLog[]>('/users/me/purchase-history');
+export const getMyPurchaseHistory = () => apiClient.get<PurchaseLog[]>('/users/me/purchases/');
 
 // Purchase Approval (Parent)
 export interface PurchaseActionData {
   log_id: string;
 }
-export const getPendingPurchaseRequests = () => apiClient.get<PurchaseLog[]>('/parent/purchase-requests/pending');
-export const approvePurchaseRequest = (data: PurchaseActionData) => apiClient.post<PurchaseLog>('/parent/purchase-requests/approve', data);
-export const rejectPurchaseRequest = (data: PurchaseActionData) => apiClient.post<PurchaseLog>('/parent/purchase-requests/reject', data);
+// Get all family purchases and filter pending ones on frontend
+export const getPendingPurchaseRequests = () => apiClient.get<PurchaseLog[]>('/family/purchases/');
+// TODO: These endpoints need to be implemented in the backend
+export const approvePurchaseRequest = (data: PurchaseActionData) => { throw new Error('Not implemented'); };
+export const rejectPurchaseRequest = (data: PurchaseActionData) => { throw new Error('Not implemented'); };
 
 // Chores
 // Parent - Chore Management
 export const createChore = (data: ChoreCreate) => apiClient.post<Chore>('/chores/', data);
-export const getMyCreatedChores = () => apiClient.get<Chore[]>('/chores/my-chores/');
+// Get all family chores - frontend can filter by created_by_parent_id if needed
+export const getMyCreatedChores = () => apiClient.get<Chore[]>('/chores/');
 export const updateChore = (choreId: string, data: ChoreCreate) => apiClient.put<Chore>(`/chores/${choreId}`, data);
-export const deactivateChore = (choreId: string) => apiClient.post<Chore>(`/chores/${choreId}/deactivate`);
+// TODO: Deactivate endpoint needs to be implemented - for now use update
+export const deactivateChore = (choreId: string) => apiClient.put<Chore>(`/chores/${choreId}`, { is_active: false });
 export const deleteChore = (choreId: string) => apiClient.delete(`/chores/${choreId}`);
 
 // General Chore Interaction (Kids & Parents)
@@ -211,20 +219,24 @@ export const getAvailableChores = () => apiClient.get<Chore[]>('/chores/');
 export const getChoreById = (choreId: string) => apiClient.get<Chore>(`/chores/${choreId}`);
 
 // Kid - Chore Submission
-export const submitChoreCompletion = (choreId: string) => apiClient.post<ChoreLog>(`/chores/${choreId}/submit`);
-export const getMyChoreHistory = () => apiClient.get<ChoreLog[]>('/chores/history/me');
+// TODO: Submit chore completion endpoint needs to be implemented
+export const submitChoreCompletion = (choreId: string) => apiClient.post<ChoreLog>('/chores/log_completion/', { chore_id: choreId, user_id: 'current' });
+export const getMyChoreHistory = () => apiClient.get<ChoreLog[]>('/chores/logs/my/');
 
 // Parent - Chore Submission Approval
-export const getPendingChoreSubmissionsForMyChores = () => apiClient.get<ChoreLog[]>('/parent/chore-submissions/pending');
-export const approveChoreSubmission = (data: ChoreActionRequestData) => apiClient.post<ChoreLog>('/parent/chore-submissions/approve', data);
-export const rejectChoreSubmission = (data: ChoreActionRequestData) => apiClient.post<ChoreLog>('/parent/chore-submissions/reject', data);
+// Get all family chore logs and filter pending ones on frontend
+export const getPendingChoreSubmissionsForMyChores = () => apiClient.get<ChoreLog[]>('/chores/logs/family/');
+// Chore submission approval endpoints
+export const approveChoreSubmission = (data: ChoreActionRequestData) => apiClient.put<ChoreLog>(`/chores/logs/${data.chore_log_id}/approve`);
+export const rejectChoreSubmission = (data: ChoreActionRequestData) => apiClient.put<ChoreLog>(`/chores/logs/${data.chore_log_id}/reject`);
 
 // Feature Requests
 export const submitFeatureRequest = (payload: KidFeatureRequestPayloadAPI) => apiClient.post<FeatureRequestAPI>('/requests/', payload);
 export const getMyFeatureRequests = () => apiClient.get<FeatureRequestAPI[]>('/requests/me/');
-export const getPendingFeatureRequests = () => apiClient.get<FeatureRequestAPI[]>('/parent/requests/pending/');
-export const approveFeatureRequest = (requestId: string) => apiClient.post<FeatureRequestAPI>(`/parent/requests/${requestId}/approve/`);
-export const rejectFeatureRequest = (requestId: string) => apiClient.post<FeatureRequestAPI>(`/parent/requests/${requestId}/reject/`);
+// Get all family requests and filter pending ones on frontend
+export const getPendingFeatureRequests = () => apiClient.get<FeatureRequestAPI[]>('/requests/family/');
+export const approveFeatureRequest = (requestId: string) => apiClient.put<FeatureRequestAPI>(`/requests/${requestId}/status`, { new_status: 'approved' });
+export const rejectFeatureRequest = (requestId: string) => apiClient.put<FeatureRequestAPI>(`/requests/${requestId}/status`, { new_status: 'rejected' });
 
 // Gemini API
 export const askGemini = (prompt: string, question: string) => apiClient.post<{ answer: string }>('/gemini/ask', { prompt, question });

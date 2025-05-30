@@ -42,9 +42,10 @@ const PendingRequestsPage = () => {
         getPendingChoreSubmissionsForMyChores(),
         getPendingFeatureRequests() // Added
       ]);
-      setPurchaseRequests(purchaseRes.data);
-      setChoreSubmissions(choreRes.data);
-      setFeatureRequests(featureRes.data); // Added
+      // Filter for pending items only
+      setPurchaseRequests(purchaseRes.data.filter(p => p.status === 'pending'));
+      setChoreSubmissions(choreRes.data.filter(c => c.status === 'pending_approval'));
+      setFeatureRequests(featureRes.data.filter(r => r.status === 'pending'));
     } catch (err) {
       setError('Failed to load pending requests. Please try again.');
       console.error('Error fetching pending requests:', err);

@@ -43,7 +43,8 @@ import {
     IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, 
     IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, 
     IconReceipt, IconHourglassHigh, IconClipboardList, IconHistory, 
-    IconChecklist, IconMessagePlus, IconListCheck, IconMessageChatbot 
+    IconChecklist, IconMessagePlus, IconListCheck, IconMessageChatbot,
+    IconUsers 
 } from '@tabler/icons-react';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -52,6 +53,7 @@ import * as api from './services/api';
 import ManageStoreItems from './components/ManageStoreItems';
 import AwardPoints from './components/AwardPoints';
 import UserManagement from './components/UserManagement';
+import FamilyManagement from './components/FamilyManagement';
 import SearchBar from './components/SearchBar';
 import LeaderboardPage from './pages/LeaderboardPage';
 import PurchaseHistoryPage from './pages/PurchaseHistoryPage';
@@ -126,6 +128,9 @@ const SignupPage = () => {
     const { setCurrentUser } = useAuth();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
+    const [familyOption, setFamilyOption] = useState<'create' | 'join'>('create');
+    const [familyName, setFamilyName] = useState('');
+    const [invitationCode, setInvitationCode] = useState('');
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -134,7 +139,15 @@ const SignupPage = () => {
         setError('');
         setLoading(true);
         try {
-            await api.signup({ username, password });
+            const signupData: api.UserCreate = { username, password };
+            
+            if (familyOption === 'create' && familyName) {
+                signupData.family_name = familyName;
+            } else if (familyOption === 'join' && invitationCode) {
+                signupData.invitation_code = invitationCode;
+            }
+            
+            await api.signup(signupData);
             const tokenResponse = await api.login(username, password);
             localStorage.setItem('token', tokenResponse.data.access_token);
             const userResponse = await api.getCurrentUser();
@@ -155,6 +168,35 @@ const SignupPage = () => {
                     <Stack>
                         <TextInput required label="Username" placeholder="Choose a username" value={username} onChange={(event) => setUsername(event.currentTarget.value)} />
                         <PasswordInput required label="Password" placeholder="Choose a password" value={password} onChange={(event) => setPassword(event.currentTarget.value)} />
+                        
+                        <Divider my="sm" label="Family Options" labelPosition="center" />
+                        
+                        <Button.Group>
+                            <Button variant={familyOption === 'create' ? 'filled' : 'light'} onClick={() => setFamilyOption('create')}>Create New Family</Button>
+                            <Button variant={familyOption === 'join' ? 'filled' : 'light'} onClick={() => setFamilyOption('join')}>Join Existing Family</Button>
+                        </Button.Group>
+                        
+                        {familyOption === 'create' && (
+                            <TextInput 
+                                required 
+                                label="Family Name" 
+                                placeholder="Enter your family name" 
+                                value={familyName} 
+                                onChange={(event) => setFamilyName(event.currentTarget.value)} 
+                            />
+                        )}
+                        
+                        {familyOption === 'join' && (
+                            <TextInput 
+                                required 
+                                label="Invitation Code" 
+                                placeholder="Enter 6-character code" 
+                                value={invitationCode} 
+                                onChange={(event) => setInvitationCode(event.currentTarget.value.toUpperCase())} 
+                                maxLength={6}
+                            />
+                        )}
+                        
                         {error && <Alert icon={<IconAlertCircle size="1rem" />} title="Signup Error" color="red" radius="md">{error}</Alert>}
                         <Button type="submit" fullWidth mt="xl" loading={loading} leftSection={<IconUserPlus size={16}/>}>Sign Up</Button>
                     </Stack>
@@ -387,6 +429,7 @@ Possible intents:
                     </>)}
                     {currentUser.role === 'parent' && (<>
                         <Divider my="sm" label="Parent Zone" labelPosition="center"/>
+                        <NavLink label="Family Management" leftSection={<IconUsers size="1rem" stroke={1.5} />} component={RouterLink} to="/family" active={location.pathname === "/family"} onClick={() => { navigate("/family"); if (mobileOpened) toggleMobile(); }}/>
                         <NavLink label="Manage Chores" leftSection={<IconClipboardList size="1rem" stroke={1.5} />} component={RouterLink} to="/parent/manage-chores" active={location.pathname === "/parent/manage-chores"} onClick={() => { navigate("/parent/manage-chores"); if (mobileOpened) toggleMobile(); }}/>
                         <NavLink label="Pending Requests" leftSection={<IconHourglassHigh size="1rem" stroke={1.5} />} component={RouterLink} to="/parent/pending-requests" active={location.pathname === "/parent/pending-requests"} onClick={() => { navigate("/parent/pending-requests"); if (mobileOpened) toggleMobile(); }}/>
                         <NavLink label="Manage Feature Requests" leftSection={<IconListCheck size="1rem" stroke={1.5} />} component={RouterLink} to="/manage-requests" active={location.pathname === "/manage-requests"} onClick={() => { navigate("/manage-requests"); if (mobileOpened) toggleMobile(); }}/>
@@ -422,6 +465,7 @@ Possible intents:
                         <Route path="/store" element={<StorePage />} />
                         <Route path="/leaderboard" element={<LeaderboardPage />} />
                         <Route path="/history" element={<PurchaseHistoryPage />} />
+                        <Route path="/family" element={<FamilyManagement />} />
                         <Route path="/parent/pending-requests" element={<PendingRequestsPage />} />
                         <Route path="/parent/manage-chores" element={<ManageChoresPage />} />
                         <Route path="/chores" element={<ChoresPage />} />

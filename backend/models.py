@@ -1,6 +1,6 @@
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -20,6 +20,7 @@ class FamilyCreate(FamilyBase):
 
 class Family(FamilyBase):
     id: str
+    invitation_codes: Optional[dict] = None  # {code: {role, expires, created_by}}
 
     class Config:
         from_attributes = True
@@ -34,6 +35,7 @@ class UserCreate(BaseModel):
     password: str
     family_id: Optional[str] = None
     family_name: Optional[str] = None
+    invitation_code: Optional[str] = None
 
 
 class User(UserBase):
@@ -135,6 +137,13 @@ class ChoreCreate(ChoreBase):
     pass
 
 
+class ChoreUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    points_value: Optional[int] = Field(None, gt=0)
+    is_active: Optional[bool] = None
+
+
 class Chore(ChoreBase):
     id: str
     created_by_parent_id: str
@@ -170,8 +179,9 @@ class ChoreLogBase(BaseModel):
         from_attributes = True
 
 
-class ChoreLogCreate(ChoreLogBase):
-    pass
+class ChoreLogCreate(BaseModel):
+    chore_id: str
+    user_id: Optional[str] = None  # This should be the username of the kid, or 'current' for self
 
 
 class ChoreLog(ChoreLogBase):
@@ -202,11 +212,32 @@ class RequestBase(BaseModel):
         from_attributes = True
 
 
-class RequestCreate(RequestBase):
-    pass
+class RequestCreate(BaseModel):
+    item_id: str
 
 
 class Request(RequestBase):
     id: str
     reviewed_by_parent_id: Optional[str] = None
     reviewed_at: Optional[datetime] = None
+
+
+class RequestStatusUpdate(BaseModel):
+    new_status: RequestStatus
+
+
+class InvitationCreate(BaseModel):
+    role: UserRole = UserRole.KID  # Default to kid role
+
+
+class InvitationInfo(BaseModel):
+    code: str
+    role: UserRole
+    expires: datetime
+    created_by: str
+    created_at: datetime
+
+
+class FamilyMembers(BaseModel):
+    family: Family
+    members: List[User]
