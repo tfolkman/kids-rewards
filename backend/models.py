@@ -25,6 +25,7 @@ class User(UserBase):  # User still has a role
     id: str  # Or int, depending on DB
     hashed_password: str
     points: Optional[int] = None  # Only applicable for kids
+    family_id: Optional[str] = None  # Family identifier for multi-tenancy
 
     class Config:
         from_attributes = True  # For Pydantic V2
