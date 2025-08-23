@@ -48,7 +48,7 @@ import {
     IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, 
     IconReceipt, IconHourglassHigh, IconClipboardList, IconHistory, 
     IconChecklist, IconMessagePlus, IconListCheck, IconMessageChatbot,
-    IconUserCheck, IconUser, IconChevronDown
+    IconUserCheck, IconUser, IconChevronDown, IconTarget
 } from '@tabler/icons-react';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -69,6 +69,7 @@ import MakeRequestPage from './pages/MakeRequestPage';
 import ManageRequestsPage from './pages/ManageRequestsPage';
 import MyAssignedChoresPage from './pages/MyAssignedChoresPage';
 import AssignChoresPage from './pages/AssignChoresPage';
+import BeardedDragonGoalPage from './pages/BeardedDragonGoalPage';
 import { StreakDisplay } from './components/StreakDisplay';
 
 interface AuthContextType {
@@ -570,6 +571,15 @@ Possible intents:
                                     styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
                                 />
                                 <NavLink 
+                                    label="🦎 Bearded Dragon Goal" 
+                                    leftSection={<IconTarget size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/bearded-dragon-goal" 
+                                    active={location.pathname === "/bearded-dragon-goal"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink 
                                     label="Purchase History" 
                                     leftSection={<IconReceipt size="1.2rem" stroke={1.5} />} 
                                     component={RouterLink} 
@@ -626,6 +636,15 @@ Possible intents:
                                     component={RouterLink} 
                                     to="/manage-requests" 
                                     active={location.pathname === "/manage-requests"} 
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink 
+                                    label="🦎 Bearded Dragon Goal" 
+                                    leftSection={<IconTarget size="1.2rem" stroke={1.5} />} 
+                                    component={RouterLink} 
+                                    to="/bearded-dragon-goal" 
+                                    active={location.pathname === "/bearded-dragon-goal"} 
                                     onClick={() => { if (mobileOpened) toggleMobile(); }}
                                     styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
                                 />
@@ -696,6 +715,7 @@ Possible intents:
                         <Route path="/make-request" element={<MakeRequestPage />} />
                         <Route path="/manage-requests" element={<ManageRequestsPage />} />
                         <Route path="/parent/assign-chores" element={<AssignChoresPage />} />
+                        <Route path="/bearded-dragon-goal" element={<BeardedDragonGoalPage />} />
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
