@@ -224,6 +224,7 @@ export const getLeaderboard = () => apiClient.get<User[]>('/leaderboard');
 
 // Purchase History
 export const getMyPurchaseHistory = () => apiClient.get<PurchaseLog[]>('/users/me/purchase-history');
+export const getBeardedDragonPurchases = () => apiClient.get<PurchaseLog[]>('/kids/bearded-dragon-purchases');
 
 // Purchase Approval (Parent)
 export interface PurchaseActionData {

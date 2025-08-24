@@ -13,7 +13,7 @@ import { IconAlertCircle } from '@tabler/icons-react';
 import { Navigate } from 'react-router-dom';
 import { showNotification } from '@mantine/notifications';
 import { BeardedDragonGoal } from '../components/BeardedDragonGoal';
-import { getMyPurchaseHistory } from '../services/api';
+import { getBeardedDragonPurchases } from '../services/api';
 import type { PurchaseLog } from '../services/api';
 import { useAuth } from '../App';
 
@@ -44,17 +44,8 @@ const BeardedDragonGoalPage: React.FC = () => {
     try {
       if (!silent) setLoading(true);
       
-      // For now, we'll fetch the current user's purchase history
-      // In a full implementation, we'd need a parent account or a new endpoint
-      // to fetch all three kids' histories
-      const response = await getMyPurchaseHistory();
-      
-      // Since we can only get the current user's history with existing endpoints,
-      // we'll simulate having all three kids' data for demonstration
-      // In production, you'd need to either:
-      // 1. Add a new endpoint that returns all kids' purchases
-      // 2. Use a parent account to fetch all data
-      // 3. Store shared data in a new table
+      // Fetch all three kids' bearded dragon purchases
+      const response = await getBeardedDragonPurchases();
       
       setAllPurchases(response.data);
       setError(null);
@@ -153,7 +144,7 @@ const BeardedDragonGoalPage: React.FC = () => {
             >
               <Text size="sm">
                 This tracker shows the collective progress of Clara, Emery, and Aiden toward their Bearded Dragon goal.
-                {currentUser?.role === 'kid' && ' Currently showing data based on your purchase history.'}
+                Data is updated every 30 seconds to show all kids' contributions.
               </Text>
             </Alert>
           </>
