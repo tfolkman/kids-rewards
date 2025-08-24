@@ -524,25 +524,25 @@ async def get_bearded_dragon_purchases(current_user: models.User = Depends(get_c
     Accessible to both kids and parents for tracking collective goal progress.
     """
     BEARDED_DRAGON_ITEM_ID = "4d35256f-f226-43d7-8211-627891059ebf"
-    
+
     logger.info(f"Bearded dragon purchases requested by {current_user.username}")
-    
+
     # Get all purchase logs from the system
     all_purchases = crud.get_all_purchase_logs()
-    
+
     # Filter for bearded dragon purchases from the three kids
     valid_usernames = ["clara", "emery", "aiden"]
     bearded_dragon_purchases = [
-        purchase for purchase in all_purchases
-        if purchase.item_id == BEARDED_DRAGON_ITEM_ID
-        and purchase.username.lower() in valid_usernames
+        purchase
+        for purchase in all_purchases
+        if purchase.item_id == BEARDED_DRAGON_ITEM_ID and purchase.username.lower() in valid_usernames
     ]
-    
+
     # Sort by timestamp descending (newest first)
     bearded_dragon_purchases.sort(key=lambda x: x.timestamp, reverse=True)
-    
+
     logger.info(f"Found {len(bearded_dragon_purchases)} bearded dragon purchases for collective goal")
-    
+
     return bearded_dragon_purchases
 
 
