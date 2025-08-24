@@ -57,3 +57,6 @@ local-env.json
 .env
 .coverage
 coverage.xml
+
+# Project Management (AI use only)
+project_management/

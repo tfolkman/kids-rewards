@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import * as api from '../services/api';
-import { Chore } from '../services/api'; // Assuming types are exported
+import { Chore, ChoreLog } from '../services/api'; // Assuming types are exported
 import {
   Table,
   Button,
@@ -13,8 +13,10 @@ import {
   Stack,
   Modal,
   Group,
+  Badge,
 } from '@mantine/core';
-import { IconAlertCircle, IconCircleCheck } from '@tabler/icons-react';
+import { IconAlertCircle, IconCircleCheck, IconRefresh } from '@tabler/icons-react';
+import EffortTimer from '../components/EffortTimer';
 
 const ChoresPage: React.FC = () => {
   const [availableChores, setAvailableChores] = useState<Chore[]>([]);
@@ -24,6 +26,9 @@ const ChoresPage: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [selectedChoreId, setSelectedChoreId] = useState<string | null>(null);
+  const [effortMinutes, setEffortMinutes] = useState(0);
+  const [choreHistory, setChoreHistory] = useState<ChoreLog[]>([]);
+  const [isRetryAttempt, setIsRetryAttempt] = useState(false);
 
   const fetchAvailableChores = async () => {
     setIsLoading(true);
@@ -40,12 +45,35 @@ const ChoresPage: React.FC = () => {
     }
   };
 
+  const fetchChoreHistory = async () => {
+    try {
+      const response = await api.getMyChoreHistory();
+      setChoreHistory(response.data);
+    } catch (err) {
+      console.error('Failed to fetch chore history:', err);
+    }
+  };
+
   useEffect(() => {
     fetchAvailableChores();
+    fetchChoreHistory();
   }, []);
 
   const openConfirmationModal = (choreId: string) => {
     setSelectedChoreId(choreId);
+    setEffortMinutes(0); // Reset effort timer
+    
+    // Check if this is a retry attempt (rejected or pending within last 24 hours)
+    const now = new Date();
+    const twentyFourHoursAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    
+    const isRetry = choreHistory.some(log => 
+      log.chore_id === choreId && 
+      new Date(log.submitted_at) > twentyFourHoursAgo &&
+      (log.status === 'rejected' || log.status === 'pending_approval')
+    );
+    
+    setIsRetryAttempt(isRetry);
     setConfirmModalOpen(true);
   };
 
@@ -56,10 +84,19 @@ const ChoresPage: React.FC = () => {
     setError(null);
     setSuccessMessage(null);
     try {
-      await api.submitChoreCompletion(selectedChoreId);
-      setSuccessMessage('Chore submitted successfully! It is now pending approval.');
-      // Refresh chores to remove the submitted one or update its status
+      await api.submitChoreCompletion(selectedChoreId, { effort_minutes: effortMinutes });
+      
+      let message = 'Chore submitted successfully! It is now pending approval.';
+      if (effortMinutes >= 10) {
+        message += ' Great effort! You earned effort points that count towards your streak!';
+      } else if (effortMinutes > 0) {
+        message += ` You earned ${Math.floor(effortMinutes * 0.5)} effort points!`;
+      }
+      
+      setSuccessMessage(message);
+      // Refresh chores and history
       fetchAvailableChores();
+      fetchChoreHistory();
     } catch (err: any) {
       setError(err.response?.data?.detail || 'Failed to submit chore.');
       console.error(err);
@@ -67,6 +104,8 @@ const ChoresPage: React.FC = () => {
       setIsSubmitting(null);
       setConfirmModalOpen(false);
       setSelectedChoreId(null);
+      setEffortMinutes(0);
+      setIsRetryAttempt(false);
     }
   };
 
@@ -148,19 +187,57 @@ const ChoresPage: React.FC = () => {
 
       <Modal
         opened={confirmModalOpen}
-        onClose={() => setConfirmModalOpen(false)}
-        title="Confirm Chore Submission"
+        onClose={() => {
+          setConfirmModalOpen(false);
+          setEffortMinutes(0);
+          setIsRetryAttempt(false);
+        }}
+        title={
+          <Group>
+            <Text fw={500}>Submit Chore</Text>
+            {isRetryAttempt && (
+              <Badge color="orange" variant="filled" leftSection={<IconRefresh size={14} />}>
+                Retry Attempt
+              </Badge>
+            )}
+          </Group>
+        }
         centered
+        size="lg"
       >
-        <Text>Are you sure you want to submit this chore as completed?</Text>
-        <Group mt="lg">
-          <Button variant="default" onClick={() => setConfirmModalOpen(false)}>
-            Cancel
-          </Button>
-          <Button color="green" onClick={handleConfirmSubmitChore} loading={!!isSubmitting}>
-            Yes, Submit
-          </Button>
-        </Group>
+        <Stack gap="md">
+          <Text>Track how long you worked on this chore to earn effort points!</Text>
+          
+          <EffortTimer 
+            onTimeUpdate={setEffortMinutes} 
+            isRetry={isRetryAttempt}
+          />
+          
+          <Text size="sm" c="dimmed">
+            Ready to submit? Make sure to stop the timer first to save your effort time.
+          </Text>
+          
+          <Group mt="lg" justify="space-between">
+            <Button 
+              variant="default" 
+              onClick={() => {
+                setConfirmModalOpen(false);
+                setEffortMinutes(0);
+                setIsRetryAttempt(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              color="green" 
+              onClick={handleConfirmSubmitChore} 
+              loading={!!isSubmitting}
+              leftSection={effortMinutes > 0 ? `+${Math.min(Math.floor(effortMinutes * 0.5), 10)} pts` : undefined}
+            >
+              Submit Chore
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
     </Container>
   );

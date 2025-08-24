@@ -1,7 +1,7 @@
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, List, Optional  # noqa: UP035
 
@@ -627,7 +627,9 @@ def delete_chore(chore_id: str, current_parent_id: str) -> bool:
 # --- Chore Log CRUD ---
 
 
-def create_chore_log_submission(chore_id: str, kid_user: models.User) -> Optional[models.ChoreLog]:
+def create_chore_log_submission(
+    chore_id: str, kid_user: models.User, effort_minutes: Optional[int] = 0
+) -> Optional[models.ChoreLog]:
     chore = get_chore_by_id(chore_id)
     if not chore or not chore.is_active:
         raise HTTPException(status_code=404, detail="Active chore not found.")
@@ -636,6 +638,33 @@ def create_chore_log_submission(chore_id: str, kid_user: models.User) -> Optiona
 
     log_id = str(uuid.uuid4())
     timestamp = datetime.utcnow()
+
+    # Check for retry attempts (same chore by same kid within 24 hours)
+    is_retry = False
+    retry_count = 0
+    twenty_four_hours_ago = timestamp - timedelta(hours=24)
+
+    # Get recent chore logs for this kid and chore
+    recent_logs = get_chore_logs_by_kid_id(kid_user.id)
+    for log in recent_logs:
+        if (
+            log.chore_id == chore_id
+            and log.submitted_at > twenty_four_hours_ago
+            and log.status in [models.ChoreStatus.REJECTED, models.ChoreStatus.PENDING_APPROVAL]
+        ):
+            is_retry = True
+            retry_count += 1
+
+    # Calculate effort points (0.5 points per minute, max 10 points)
+    effort_points = min(int((effort_minutes or 0) * 0.5), 10) if effort_minutes else 0
+
+    # Log effort metrics
+    if effort_minutes and effort_minutes > 0:
+        logger.info(
+            f"Effort tracking - Kid: {kid_user.username}, Chore: {chore.name}, "
+            f"Minutes: {effort_minutes}, Points: {effort_points}, "
+            f"Is Retry: {is_retry}, Retry Count: {retry_count}"
+        )
 
     log_data = {
         "id": log_id,
@@ -648,6 +677,10 @@ def create_chore_log_submission(chore_id: str, kid_user: models.User) -> Optiona
         "submitted_at": timestamp.isoformat(),
         "reviewed_by_parent_id": None,
         "reviewed_at": None,
+        "effort_minutes": effort_minutes or 0,
+        "retry_count": retry_count,
+        "effort_points": Decimal(effort_points),
+        "is_retry": is_retry,
     }
     try:
         chore_logs_table.put_item(Item=log_data)
@@ -662,6 +695,10 @@ def create_chore_log_submission(chore_id: str, kid_user: models.User) -> Optiona
             submitted_at=timestamp,
             reviewed_by_parent_id=None,
             reviewed_at=None,
+            effort_minutes=effort_minutes or 0,
+            retry_count=retry_count,
+            effort_points=effort_points,
+            is_retry=is_retry,
         )
     except ClientError as e:
         print(f"Error creating chore log for kid {kid_user.username}, chore {chore.name}: {e}")
@@ -1232,19 +1269,25 @@ def calculate_streak_for_kid(kid_id: str) -> dict:
     # Get all completed chores (approved status) for the kid
     chore_logs = get_chore_logs_by_kid_id(kid_id)
 
-    # Filter for approved chores only and sort by date
-    approved_chores = [log for log in chore_logs if log.status == models.ChoreStatus.APPROVED]
+    # Filter for approved chores and effort attempts (retries count towards streaks)
+    # Include approved chores and high-effort attempts (>10 minutes) even if rejected
+    streak_eligible_chores = [
+        log
+        for log in chore_logs
+        if log.status == models.ChoreStatus.APPROVED
+        or (hasattr(log, "effort_minutes") and log.effort_minutes and log.effort_minutes >= 10)
+    ]
 
-    if not approved_chores:
+    if not streak_eligible_chores:
         return {"current_streak": 0, "longest_streak": 0, "last_completion_date": None, "streak_active": False}
 
     # Sort by submitted_at date (descending - newest first)
-    approved_chores.sort(key=lambda x: x.submitted_at, reverse=True)
+    streak_eligible_chores.sort(key=lambda x: x.submitted_at, reverse=True)
 
     # Extract unique dates (only the date part, not time)
     completion_dates = []
     seen_dates = set()
-    for chore in approved_chores:
+    for chore in streak_eligible_chores:
         date_only = chore.submitted_at.date()
         if date_only not in seen_dates:
             completion_dates.append(date_only)
