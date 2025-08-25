@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import * as api from '../services/api';
 import { ChoreLogWithStreakBonus, ChoreStatus } from '../services/api';
 import {
@@ -13,8 +13,20 @@ import {
   Group,
   Tooltip,
   Card,
+  SimpleGrid,
+  ThemeIcon,
+  Progress,
 } from '@mantine/core';
-import { IconAlertCircle, IconFlame, IconCalendar, IconCoins } from '@tabler/icons-react';
+import { 
+  IconAlertCircle, 
+  IconFlame, 
+  IconCalendar, 
+  IconCoins,
+  IconClock,
+  IconRefresh,
+  IconTrophy,
+  IconTarget
+} from '@tabler/icons-react';
 import { ResponsiveTable } from '../components/ResponsiveTable';
 
 const ChoreHistoryPage: React.FC = () => {
@@ -62,6 +74,26 @@ const ChoreHistoryPage: React.FC = () => {
     fetchChoreHistory();
   }, []);
 
+  // Calculate effort statistics
+  const effortStats = useMemo(() => {
+    const totalEffortMinutes = choreHistory.reduce((sum, log) => sum + (log.effort_minutes || 0), 0);
+    const totalEffortPoints = choreHistory.reduce((sum, log) => sum + (log.effort_points || 0), 0);
+    const retryAttempts = choreHistory.filter(log => log.is_retry).length;
+    const highEffortChores = choreHistory.filter(log => (log.effort_minutes || 0) >= 10).length;
+    const averageEffort = choreHistory.length > 0 
+      ? Math.round(totalEffortMinutes / choreHistory.length) 
+      : 0;
+    
+    return {
+      totalMinutes: totalEffortMinutes,
+      totalPoints: totalEffortPoints,
+      retryCount: retryAttempts,
+      highEffortCount: highEffortChores,
+      averageMinutes: averageEffort,
+      totalChores: choreHistory.length
+    };
+  }, [choreHistory]);
+
   const getStatusBadge = (status: ChoreStatus) => {
     let color = 'gray';
     switch (status) {
@@ -90,7 +122,34 @@ const ChoreHistoryPage: React.FC = () => {
     {
       key: 'chore_name',
       label: 'Chore Name',
-      render: (value: string) => <Text fw={500}>{value}</Text>
+      render: (value: string, row: ChoreLogWithStreakBonus) => (
+        <Stack gap={2}>
+          <Text fw={500}>{value}</Text>
+          {row.is_retry && (
+            <Badge size="xs" color="orange" leftSection={<IconRefresh size={10} />}>
+              Retry Attempt
+            </Badge>
+          )}
+        </Stack>
+      )
+    },
+    {
+      key: 'effort',
+      label: 'Effort',
+      render: (_: any, row: ChoreLogWithStreakBonus) => {
+        if (!row.effort_minutes) return <Text size="sm" c="dimmed">-</Text>;
+        return (
+          <Stack gap={2}>
+            <Group gap={4}>
+              <IconClock size={14} />
+              <Text size="sm">{row.effort_minutes} min</Text>
+            </Group>
+            {row.effort_points && row.effort_points > 0 && (
+              <Text size="xs" c="teal">+{row.effort_points} effort pts</Text>
+            )}
+          </Stack>
+        );
+      }
     },
     {
       key: 'points_value',
@@ -117,22 +176,22 @@ const ChoreHistoryPage: React.FC = () => {
     },
     {
       key: 'submitted_at',
-      label: 'Submitted At',
-      render: (value: string) => <Text size="sm">{new Date(value).toLocaleString()}</Text>
-    },
-    {
-      key: 'reviewed_at',
-      label: 'Reviewed At',
-      render: (value: string | null) => (
-        <Text size="sm">{value ? new Date(value).toLocaleString() : '-'}</Text>
-      )
+      label: 'Submitted',
+      render: (value: string) => <Text size="sm">{new Date(value).toLocaleDateString()}</Text>
     }
   ];
 
   const cardRender = (log: ChoreLogWithStreakBonus) => (
     <Stack gap="sm">
       <Group justify="space-between">
-        <Text fw={600} size="lg">{log.chore_name}</Text>
+        <Stack gap={2}>
+          <Text fw={600} size="lg">{log.chore_name}</Text>
+          {log.is_retry && (
+            <Badge size="xs" color="orange" leftSection={<IconRefresh size={10} />}>
+              Retry Attempt
+            </Badge>
+          )}
+        </Stack>
         {getStatusBadge(log.status)}
       </Group>
       
@@ -157,6 +216,20 @@ const ChoreHistoryPage: React.FC = () => {
         )}
       </Group>
       
+      {log.effort_minutes && log.effort_minutes > 0 && (
+        <Group gap="xs">
+          <IconClock size={16} />
+          <Text size="sm">
+            {log.effort_minutes} min effort
+            {log.effort_points && log.effort_points > 0 && (
+              <Text component="span" c="teal" fw={500}>
+                {' '}(+{log.effort_points} pts)
+              </Text>
+            )}
+          </Text>
+        </Group>
+      )}
+      
       <Group gap="xs" c="dimmed">
         <IconCalendar size={16} />
         <Text size="sm">
@@ -178,6 +251,87 @@ const ChoreHistoryPage: React.FC = () => {
         <Title order={2} ta="center">
           My Chore History
         </Title>
+
+        {/* Effort Statistics Cards */}
+        {choreHistory.length > 0 && (
+          <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="md">
+            <Card padding="lg" radius="md" withBorder>
+              <Group justify="space-between">
+                <div>
+                  <Text size="xs" c="dimmed" fw={700} tt="uppercase">
+                    Total Effort
+                  </Text>
+                  <Text size="xl" fw={700}>
+                    {effortStats.totalMinutes} min
+                  </Text>
+                  <Text size="xs" c="teal">
+                    {effortStats.totalPoints} effort points earned
+                  </Text>
+                </div>
+                <ThemeIcon color="blue" size="xl" radius="md" variant="light">
+                  <IconClock size={28} />
+                </ThemeIcon>
+              </Group>
+            </Card>
+
+            <Card padding="lg" radius="md" withBorder>
+              <Group justify="space-between">
+                <div>
+                  <Text size="xs" c="dimmed" fw={700} tt="uppercase">
+                    Average Effort
+                  </Text>
+                  <Text size="xl" fw={700}>
+                    {effortStats.averageMinutes} min
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    per chore
+                  </Text>
+                </div>
+                <ThemeIcon color="teal" size="xl" radius="md" variant="light">
+                  <IconTarget size={28} />
+                </ThemeIcon>
+              </Group>
+            </Card>
+
+            <Card padding="lg" radius="md" withBorder>
+              <Group justify="space-between">
+                <div>
+                  <Text size="xs" c="dimmed" fw={700} tt="uppercase">
+                    Persistence
+                  </Text>
+                  <Text size="xl" fw={700}>
+                    {effortStats.retryCount}
+                  </Text>
+                  <Text size="xs" c="orange">
+                    retry attempts
+                  </Text>
+                </div>
+                <ThemeIcon color="orange" size="xl" radius="md" variant="light">
+                  <IconRefresh size={28} />
+                </ThemeIcon>
+              </Group>
+            </Card>
+
+            <Card padding="lg" radius="md" withBorder>
+              <Group justify="space-between">
+                <div>
+                  <Text size="xs" c="dimmed" fw={700} tt="uppercase">
+                    High Effort
+                  </Text>
+                  <Text size="xl" fw={700}>
+                    {effortStats.highEffortCount}
+                  </Text>
+                  <Text size="xs" c="grape">
+                    10+ min chores
+                  </Text>
+                </div>
+                <ThemeIcon color="grape" size="xl" radius="md" variant="light">
+                  <IconTrophy size={28} />
+                </ThemeIcon>
+              </Group>
+            </Card>
+          </SimpleGrid>
+        )}
 
         {error && (
           <Alert icon={<IconAlertCircle size="1rem" />} title="Error" color="red" withCloseButton onClose={() => setError(null)}>

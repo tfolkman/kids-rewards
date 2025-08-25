@@ -134,6 +134,7 @@ class Chore(ChoreBase):
 class ChoreSubmission(BaseModel):
     chore_id: str
     # kid_id will be from the authenticated user
+    effort_minutes: Optional[int] = Field(default=0, ge=0, le=240)  # How long they worked on it
 
 
 class ChoreApprovalRequest(BaseModel):
@@ -152,6 +153,11 @@ class ChoreLogBase(BaseModel):
     submitted_at: datetime = Field(default_factory=datetime.utcnow)
     reviewed_by_parent_id: Optional[str] = None
     reviewed_at: Optional[datetime] = None
+    # Effort tracking fields
+    effort_minutes: Optional[int] = Field(default=0, ge=0, le=240)  # Max 4 hours
+    retry_count: int = Field(default=0, ge=0)  # Number of retry attempts
+    effort_points: int = Field(default=0, ge=0)  # Calculated effort points (0.5 per minute, max 10)
+    is_retry: bool = Field(default=False)  # True if this is a retry of a previous attempt
 
     class Config:
         from_attributes = True

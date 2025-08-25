@@ -328,12 +328,24 @@ async def get_specific_chore(chore_id: str):
 @app.post("/chores/{chore_id}/submit", response_model=models.ChoreLog, status_code=status.HTTP_202_ACCEPTED)
 async def submit_chore_completion(
     chore_id: str,
+    submission: models.ChoreSubmission,
     current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
 ):
     """
     Kid submits a chore they have completed. Creates a ChoreLog entry with PENDING_APPROVAL status.
+
+    Now includes effort tracking features:
+    - effort_minutes: Time spent working on the chore (0-240 minutes)
+    - effort_points: Calculated as 0.5 points per minute, max 10 points
+    - retry_count: Number of previous attempts in last 24 hours
+    - is_retry: Whether this is a retry of a previously rejected/pending chore
+
+    Effort points contribute to streaks even if the chore is rejected (if >= 10 minutes).
+    This encourages persistence and rewards effort over just outcomes.
     """
-    chore_log = crud.create_chore_log_submission(chore_id=chore_id, kid_user=current_kid)
+    chore_log = crud.create_chore_log_submission(
+        chore_id=chore_id, kid_user=current_kid, effort_minutes=submission.effort_minutes
+    )
     if not chore_log:
         # crud function raises HTTPException, so this might be redundant
         raise HTTPException(

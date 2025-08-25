@@ -117,6 +117,11 @@ export interface ChoreLog {
   submitted_at: string; // ISO date string
   reviewed_by_parent_id?: string;
   reviewed_at?: string; // ISO date string
+  // Effort tracking fields
+  effort_minutes?: number;
+  retry_count?: number;
+  effort_points?: number;
+  is_retry?: boolean;
 }
 
 export interface ChoreActionRequestData {
@@ -247,13 +252,19 @@ export const getAvailableChores = () => apiClient.get<Chore[]>('/chores/');
 export const getChoreById = (choreId: string) => apiClient.get<Chore>(`/chores/${choreId}`);
 
 // Kid - Chore Submission
-export const submitChoreCompletion = (choreId: string) => apiClient.post<ChoreLog>(`/chores/${choreId}/submit`);
+export interface ChoreSubmissionData {
+  effort_minutes?: number;
+}
+
+export const submitChoreCompletion = (choreId: string, data?: ChoreSubmissionData) => 
+  apiClient.post<ChoreLog>(`/chores/${choreId}/submit`, data || {});
 export const getMyChoreHistory = () => apiClient.get<ChoreLog[]>('/chores/history/me');
 
 // Extended ChoreLog type with streak information
 export interface ChoreLogWithStreakBonus extends ChoreLog {
   streak_bonus_points?: number;
   streak_day?: number;
+  // Effort tracking fields are inherited from ChoreLog
 }
 
 export const getMyDetailedChoreHistory = () => apiClient.get<ChoreLogWithStreakBonus[]>('/chores/history/me/detailed');

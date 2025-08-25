@@ -26,66 +26,74 @@ Welcome to the Kids Rewards project! This guide will help you understand how to 
 - **Points Awards**: Give bonus points with reasons
 - **Request Management**: Review and approve kid requests for new items/chores
 
-## 🚀 Getting Started: Local Development
+## 🚀 Quick Start: Local Development
 
-This section explains how to run the backend (the "brain" of the app) and the frontend (what you see and interact with in the browser) on your own computer. This is great for making changes and testing things out!
+### Prerequisites
 
-### What You'll Need (Prerequisites)
+Make sure you have these tools installed:
 
-Before you start, make sure you have these tools installed on your machine:
+*   **Docker Desktop** - For running DynamoDB locally
+*   **Python 3.12+** - Backend language
+*   **Node.js & npm** - For the frontend
+*   **AWS CLI** - For database operations
+*   **AWS SAM CLI** - For running the backend locally
+*   **Just** - Command runner (install via `brew install just` on Mac, or see [installation guide](https://github.com/casey/just#installation))
 
-*   **Docker Desktop:** We use this to run a local version of our database (DynamoDB) and also to build and run our backend application locally via SAM CLI.
-*   **Python:** The backend is written in Python (we're using version 3.12).
-*   **pip:** Python's package installer (usually comes with Python).
-*   **uv:** (Optional, but recommended for faster dependency management in Python) Can be installed via `pip install uv`.
-*   **Node.js and npm:** Node.js is a JavaScript runtime, and npm is its package manager. We need these for the frontend. (npm usually comes with Node.js).
-*   **AWS CLI:** The Amazon Web Services Command Line Interface. We'll use this to create our local database tables.
-*   **AWS SAM CLI:** A tool from AWS that lets us run our serverless backend (Lambda functions and API Gateway) locally, just like it would run in the cloud.
+### 🎯 Super Quick Start
 
-### Setting up the Local Backend (The "Brain")
+If you just want to get running quickly:
 
-The backend handles all the logic, like user logins and managing points.
+```bash
+# 1. Create and activate Python virtual environment
+just venv
+source .venv/bin/activate  # On Mac/Linux
+# .venv\Scripts\activate   # On Windows
 
-1.  **Start Your Local Database (DynamoDB Local with Docker):**
-    Our app needs a database to store information. For local development, we'll run DynamoDB (the database AWS uses) inside a Docker container.
+# 2. Install all dependencies
+just install
 
-    *   **Open your Terminal (or Command Prompt/PowerShell on Windows).**
-    *   **Create a Docker Network:** This helps our app's components talk to each other. You only need to do this once.
-        ```bash
-        docker network create kidsrewards-network
-        ```
-        (If it says `Error response from daemon: network with name kidsrewards-network already exists`, that's okay! It means you've already created it.)
-    *   **Create a Folder for Database Data:** This folder will store your local database files so your data doesn't disappear when you stop the database.
-        In your project's main folder (`kids_rewards`), if you don't already have a `data` folder, create it:
-        ```bash
-        mkdir data
-        ```
-    *   **Run DynamoDB Local:** This command starts the database container. Give it a specific name (`dynamodb-local`) and connect it to our network.
-        ```bash
-        docker run --name dynamodb-local --network kidsrewards-network -p 8000:8000 -v "$(pwd)/data:/home/dynamodblocal/data" amazon/dynamodb-local -jar DynamoDBLocal.jar -sharedDb -dbPath ./data
-        ```
-        *   `--name dynamodb-local`: Gives our database container a friendly name.
-        *   `--network kidsrewards-network`: Connects it to the network we created.
-        *   `-p 8000:8000`: Makes the database accessible on port 8000 of your computer.
-        *   `-v "$(pwd)/data:/home/dynamodblocal/data"`: Links the `data` folder on your computer to a folder inside the container. This is how your data gets saved!
-        *   The rest of the command tells DynamoDB Local how to behave.
-    *   **Keep this terminal window open!** This container needs to keep running for your local database to work.
+# 3. Start the database (in background)
+just db-start-detached
+
+# 4. In separate terminals:
+just backend   # Terminal 1: Start backend API
+just frontend  # Terminal 2: Start frontend
+```
+
+Then open http://localhost:3001 in your browser!
+
+**Test Login Credentials:**
+*   Parent: `testparent` / `password456`
+*   Kid: `testkid` / `password123`
+
+### Detailed Setup Instructions
+
+#### Setting up the Local Backend
+
+1.  **Start Your Local Database:**
+    ```bash
+    just db-start-detached
+    ```
+    This starts DynamoDB in a Docker container with all the necessary configuration.
 
 2.  **Create Your Database Tables:**
-    Now that the database is running, we need to create the "tables" inside it where our data will live. We'll use the AWS CLI for this.
-
-    *   Open a **new** terminal window.
-    *   **Create the `KidsRewardsUsers` table (or your configured local table name):**
-        Refer to your `backend/template.yaml` and `local-env.json` for the exact local table names if they differ from the example. Assuming `local-my-table` for users:
-        ```bash
-        aws dynamodb create-table \
-            --table-name local-my-table \
-            --attribute-definitions AttributeName=username,AttributeType=S \
-            --key-schema AttributeName=username,KeyType=HASH \
-            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
-            --endpoint-url http://localhost:8000
-        ```
-    *   **Create the `KidsRewardsStoreItems` table (or your configured local table name):**
+    ```bash
+    # Check if tables already exist
+    just db-list
+    
+    # If tables don't exist, create them using AWS CLI:
+    aws dynamodb create-table \
+        --table-name KidsRewardsUsers \
+        --attribute-definitions AttributeName=username,AttributeType=S \
+        --key-schema AttributeName=username,KeyType=HASH \
+        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+        --endpoint-url http://localhost:8000
+    ```
+    
+    # Note: Full table creation commands are available in the original setup,
+    # but most users can skip this as tables are usually pre-created
+    
+    *   **Create the `KidsRewardsStoreItems` table (if needed):**
         Assuming `local-store-items-table` for store items:
         ```bash
         aws dynamodb create-table \
@@ -225,97 +233,68 @@ The backend handles all the logic, like user logins and managing points.
         *   `--endpoint-url http://localhost:8000` is very important! It tells the AWS CLI to talk to your *local* database, not the real one in the cloud.
         *   If you ever need to start fresh, you can delete these tables with `aws dynamodb delete-table --table-name YourTableName --endpoint-url http://localhost:8000` (e.g., for `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`) and then run the `create-table` commands again.
 
-3.  **Add Starting Data to Your Tables (Seeding):**
-    It's helpful to have some sample users and items in the database when you're developing. We have a script for this.
-
-    *   Make sure you're in the main project directory (`kids_rewards`) in your terminal.
-    *   **Set up Python Environment (if you haven't):** It's good practice to use a "virtual environment" for Python projects to keep dependencies separate.
+3.  **Set up Python Environment and Seed Data:**
+    ```bash
+    # Create and activate virtual environment
+    just venv
+    source .venv/bin/activate  # Mac/Linux
+    # .venv\Scripts\activate   # Windows
+    
+    # Install dependencies
+    just install
+    ```
+    *   **Seed the database with test data (if needed):**
         ```bash
-        # Create it (only once)
-        python -m venv .venv
-        # Activate it (every time you open a new terminal for this project)
-        # On macOS/Linux:
-        source .venv/bin/activate
-        # On Windows:
-        # .venv\Scripts\activate
-        # Install required packages (only once, or when requirements.txt changes)
-        pip install -r backend/requirements.txt
-        # Or, if you have uv installed:
-        # uv pip install -r backend/requirements.txt
+        PYTHONPATH=. DYNAMODB_ENDPOINT_OVERRIDE=http://localhost:8000 \
+        USERS_TABLE_NAME=KidsRewardsUsers \
+        STORE_ITEMS_TABLE_NAME=KidsRewardsStoreItems \
+        PURCHASE_LOGS_TABLE_NAME=KidsRewardsPurchaseLogs \
+        CHORES_TABLE_NAME=KidsRewardsChores \
+        CHORE_LOGS_TABLE_NAME=KidsRewardsChoreLogs \
+        REQUESTS_TABLE_NAME=KidsRewardsRequests \
+        python scripts/seed_dynamodb.py --environment local
         ```
-    *   **Run the Seeding Script:** This command tells Python where to find your project's code (`PYTHONPATH=.`) and which database to talk to. Adjust table names if your local setup uses different ones.
-        ```bash
-        PYTHONPATH=. DYNAMODB_ENDPOINT_OVERRIDE=http://localhost:8000 USERS_TABLE_NAME=KidsRewardsUsers STORE_ITEMS_TABLE_NAME=KidsRewardsStoreItems PURCHASE_LOGS_TABLE_NAME=KidsRewardsPurchaseLogs CHORES_TABLE_NAME=KidsRewardsChores CHORE_LOGS_TABLE_NAME=KidsRewardsChoreLogs REQUESTS_TABLE_NAME=KidsRewardsRequests python scripts/seed_dynamodb.py --environment local
-        ```
-        This will add users like "testparent" and "testkid" to your local database. (Note: The seed script may need updating to populate chore and request tables if desired).
+        This adds test users (testparent/testkid) and sample data.
 
-4.  **Prepare and Run the Backend Application (SAM Local):**
-    Now we'll run the actual backend code using AWS SAM CLI. Since our Lambda is packaged as a Docker image, SAM CLI will build this image locally.
+4.  **Run the Backend Application:**
+    ```bash
+    # Make sure you have local-env.json configured
+    # (The file is already set up with correct settings)
+    
+    # Start the backend API
+    just backend
+    ```
+    
+    This runs your backend API at http://localhost:3000
 
-    *   Open a **new** terminal window (or use the one where you activated the Python virtual environment). Make sure you're in the main `kids_rewards` project directory.
-    *   **Build the SAM Application (Optional but good practice):** While `sam local start-api` can build the image, running `sam build` first can sometimes help catch template or configuration issues earlier.
-        ```bash
-        sam build -t backend/template.yaml
-        ```
-    *   **Set up Local Environment File:** Your backend needs a special file called `local-env.json` to know how to connect to your local database and other settings. We provide an example file called `local-env.example.json`.
-        *   In your project's main folder (`kids_rewards`), make a copy of `local-env.example.json` and name the copy `local-env.json`.
-        *   Ensure the table names in `local-env.json` match what you created locally (e.g., `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`).
-    *   **Start the Local API:** This command runs your backend.
-        *   It uses your `backend/template.yaml` to understand your function configuration (including the Dockerfile location).
-        *   `local-env.json` provides environment variables to the running container.
-        *   `--docker-network kidsrewards-network` connects your backend container to the same network as your database.
-        ```bash
-        sam local start-api -t backend/template.yaml \
-            --env-vars local-env.json \
-            --docker-network kidsrewards-network \
-            --parameter-overrides "AppImageUri=kidsrewardslambdafunction:latest TableNamePrefix=local- LocalDynamoDBEndpoint=http://localhost:8000"
-        ```
-        SAM CLI will build the Docker image specified in your `backend/Dockerfile` if it hasn't been built yet or if code changes are detected. Your backend API should then be running, usually at `http://127.0.0.1:3000`.
-    *   **Keep this terminal window open!** Your backend needs to keep running.
+#### Setting up the Local Frontend
 
-### Setting up the Local Frontend (The User Interface)
+1.  **Run the Frontend:**
+    ```bash
+    # In a new terminal
+    just frontend
+    ```
+    
+    This starts the React app at http://localhost:3001
 
-The frontend is what you see in your web browser. It's a React application.
+### Useful Development Commands
 
-1.  **Install Frontend Dependencies:**
-    *   Open a **new** terminal window.
-    *   Navigate to the `frontend` directory:
-        ```bash
-        cd frontend
-        ```
-    *   Install all the necessary code packages for the frontend:
-        ```bash
-        npm install
-        ```
-        (You only need to do this once, or if `frontend/package.json` changes.)
+```bash
+# Check status of all services
+just status
 
-2.  **Run the Frontend Development Server:**
-    *   In the same terminal (still in the `frontend` directory), start the React app:
-        ```bash
-        npm start
-        ```
-    This will usually open the application automatically in your web browser, typically at `http://localhost:3001`. (Note: The backend runs on port 3000, and the frontend on 3001).
-    *   **Keep this terminal window open!** The frontend development server needs to keep running.
+# Run all tests
+just test
 
-### You're All Set for Local Development!
+# Format and lint code
+just format
 
-Now you should have:
-1.  DynamoDB Local (database) running in a Docker container.
-2.  Your backend API running via `sam local start-api` (inside a Docker container).
-3.  Your frontend React app running via `npm start`.
+# Run pre-commit checks
+just pre-commit
 
-You can open `http://localhost:3001` in your browser and start using the app!
-
-**Test Login Credentials:**
-*   **Parent User:**
-    *   Username: `testparent`
-    *   Password: `password456`
-*   **Kid User:**
-    *   Username: `testkid`
-    *   Password: `password123`
-
-If you make changes to the backend Python code (inside the `backend` directory), you'll need to stop `sam local start-api` (Ctrl+C) and restart it. SAM will then rebuild your Docker image with the changes.
-If you make changes to the frontend React code, `npm start` will usually update your browser automatically.
+# See all available commands
+just
+```
 
 ---
 
@@ -323,38 +302,37 @@ If you make changes to the frontend React code, `npm start` will usually update 
 
 This project uses `pytest` for backend testing, React Testing Library and Playwright for frontend testing, and `Ruff` for Python linting and formatting.
 
+### Quick Testing Commands
+
+```bash
+# Run all tests
+just test
+
+# Backend tests only
+just test-backend
+
+# Frontend tests only  
+just test-frontend
+
+# E2E tests with Playwright
+just e2e
+
+# Lint and format code
+just format
+```
+
 ### Backend (Python)
 
-1.  **Activate Virtual Environment:**
-    Ensure your Python virtual environment is activated:
-    ```bash
-    # On macOS/Linux:
-    source .venv/bin/activate
-    # On Windows:
-    # .venv\Scripts\activate
-    ```
+```bash
+# Run tests with coverage
+just test-backend-coverage
 
-2.  **Install/Update Dependencies:**
-    If you haven't already, or if `backend/requirements.txt` has changed:
-    ```bash
-    cd backend
-    pip install -r requirements.txt
-    # Or using uv:
-    # uv pip install -r requirements.txt
-    cd ..
-    ```
+# Lint code
+just lint-backend
 
-3.  **Running Ruff (Linting & Formatting):**
-    Ruff helps maintain code quality.
-    *   **Check for issues:**
-        ```bash
-        cd backend
-        ruff check .
-        ```
-    *   **Format code:**
-        ```bash
-        ruff format .
-        ```
+# Auto-fix and format
+just fix-backend
+```
     *   **VS Code Integration for Ruff:**
         1.  Install the [Ruff VS Code extension](https://marketplace.visualstudio.com/items?itemName=charliermarsh.ruff).
         2.  Enable "Format on Save" in VS Code settings:
@@ -375,71 +353,34 @@ This project uses `pytest` for backend testing, React Testing Library and Playwr
                 ```
         This will automatically format your Python files and organize imports when you save them.
 
-4.  **Running Backend Tests (pytest):**
-    *   Navigate to the `backend` directory:
-        ```bash
-        cd backend
-        ```
-    *   Set the `APP_SECRET_KEY` environment variable for tests. You can set this in your shell, or use a `.env` file with `python-dotenv` if you prefer (not covered here). For a one-time run:
-        ```bash
-        APP_SECRET_KEY="your_test_secret_key_at_least_32_chars_long" pytest
-        ```
-        Or, more commonly, export it for your session:
-        ```bash
-        export APP_SECRET_KEY="your_test_secret_key_at_least_32_chars_long"
-        pytest
-        ```
-        (For Windows Command Prompt: `set APP_SECRET_KEY="your_test_secret_key_at_least_32_chars_long"` then `pytest`)
-        (For Windows PowerShell: `$env:APP_SECRET_KEY="your_test_secret_key_at_least_32_chars_long"` then `pytest`)
-    *   Pytest will discover and run tests from the `tests` directory. Coverage reports (HTML and XML) will be generated in `backend/htmlcov/` and `backend/coverage.xml` respectively, as configured in `pyproject.toml`. Open `backend/htmlcov/index.html` in a browser to view the HTML report.
+The `just` commands automatically handle environment variables and paths for you. Coverage reports are generated in `backend/htmlcov/` and can be viewed by opening `backend/htmlcov/index.html` in a browser.
 
 ### Frontend (React/TypeScript)
 
-1.  **Navigate to Frontend Directory:**
-    ```bash
-    cd frontend
-    ```
+```bash
+# Run tests in watch mode
+just test-frontend-watch
 
-2.  **Install/Update Dependencies:**
-    If you haven't already, or if `package.json` has changed:
-    ```bash
-    npm install
-    ```
+# Run E2E tests (make sure frontend is running first)
+just frontend      # In terminal 1
+just e2e           # In terminal 2
 
-3.  **Running Unit & Integration Tests (React Testing Library):**
-    These tests are typically for individual components or small groups of components.
-    ```bash
-    npm test
-    ```
-    This will run tests in watch mode. Press `a` to run all tests once.
+# Run E2E tests with UI for debugging
+just e2e-ui
 
-4.  **Running End-to-End Tests (Playwright):**
-    These tests interact with your application in a real browser.
-    *   **Ensure your frontend development server is running:**
-        In a separate terminal, from the `frontend` directory:
-        ```bash
-        npm start
-        ```
-        (Usually runs on `http://localhost:3001`)
-    *   **Run Playwright tests:**
-        In another terminal, from the `frontend` directory:
-        ```bash
-        npm run e2e
-        ```
-    *   **Run Playwright tests with UI mode (for debugging):**
-        ```bash
-        npm run e2e:ui
-        ```
-    *   **Show Playwright HTML report:**
-        After tests run, an HTML report is generated in `playwright-report/`.
-        ```bash
-        npm run e2e:report
-        ```
-        This will open the report in your browser.
+# View test report
+just e2e-report
+```
 
 ### CI/CD Automation
 
-All these tests and linting checks are also configured to run automatically on every push or pull request to `main` or `develop` branches via GitHub Actions. See [`.github/workflows/ci-tests.yml`](./.github/workflows/ci-tests.yml).
+All tests and linting checks run automatically on every push or pull request via GitHub Actions. You can run the same checks locally with:
+
+```bash
+just pre-commit
+```
+
+This runs the exact same checks that GitHub will run, helping you catch issues before pushing.
 
 ---
 
@@ -487,7 +428,7 @@ Before the GitHub Actions workflow can successfully deploy to production, you mu
 2.  **Monitor Deployment:** The GitHub Actions workflow "Deploy Backend to AWS" will automatically start. You can monitor its progress in the "Actions" tab of your GitHub repository.
 3.  **Verify Production:** After the workflow completes successfully for both backend (GitHub Action) and frontend (Amplify), verify that the changes are live and functioning correctly in the production environment.
 
-## Next Steps & Important Notes
+## \ud83d\udd27 Troubleshooting\n\n### Common Issues\n\n**DynamoDB Connection Error:**\n```bash\n# If backend can't connect to DynamoDB:\njust db-stop\njust db-start-detached\njust backend  # Restart backend\n```\n\n**Port Already in Use:**\n```bash\n# Check what's using the ports\nlsof -i :3000  # Backend port\nlsof -i :3001  # Frontend port\nlsof -i :8000  # DynamoDB port\n```\n\n**Container Already Exists:**\n```bash\n# The just command handles this automatically, but if needed:\ndocker rm dynamodb-local\njust db-start-detached\n```\n\n**Check Service Status:**\n```bash\njust status  # Shows status of all services\njust health  # Full health check with versions\n```\n\n## \ud83d\udcda Complete Command Reference\n\nFor a full list of available commands:\n```bash\njust --list\n```\n\nKey commands:\n- `just dev` - Instructions for starting full environment\n- `just install` - Install all dependencies\n- `just test` - Run all tests\n- `just format` - Format and lint code\n- `just clean` - Clean build artifacts\n\n## Next Steps & Important Notes
 
 *   **Complete AWS Setup:** Ensure the IAM OIDC Role, GitHub Secrets (`AWS_ROLE_TO_ASSUME`, `SAM_S3_BUCKET_NAME`), and ECR repository are correctly set up as described in the "Prerequisites for Production Deployment" section.
 *   **SAM S3 Bucket:** The `SAM_S3_BUCKET_NAME` secret should point to an S3 bucket you own, used by `sam deploy` for packaging.
