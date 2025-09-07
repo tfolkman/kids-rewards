@@ -3,24 +3,258 @@
 
 # Default recipe shows all available commands
 default:
+    @echo "🚀 Kids Rewards Development Commands"
+    @echo "===================================="
+    @echo ""
+    @echo "Quick Start:"
+    @echo "  just start-dev  (or 'just dev')  - Start complete dev environment with auto-reload"
+    @echo "  just stop-dev   (or 'just stop') - Stop all development services"
+    @echo ""
+    @echo "All available commands:"
     @just --list --unsorted
 
 # === Environment Setup ===
 
+# Complete development environment setup with auto-reload
+start-dev:
+    #!/usr/bin/env bash
+    set -e
+    
+    echo "🚀 Starting Kids Rewards Development Environment..."
+    echo "================================================"
+    
+    # Step 1: Check prerequisites
+    echo ""
+    echo "📋 Checking prerequisites..."
+    command -v docker >/dev/null 2>&1 || { echo "❌ Docker is required but not installed. Aborting." >&2; exit 1; }
+    command -v python3 >/dev/null 2>&1 || { echo "❌ Python3 is required but not installed. Aborting." >&2; exit 1; }
+    command -v node >/dev/null 2>&1 || { echo "❌ Node.js is required but not installed. Aborting." >&2; exit 1; }
+    command -v sam >/dev/null 2>&1 || { echo "❌ AWS SAM CLI is required but not installed. Aborting." >&2; exit 1; }
+    command -v aws >/dev/null 2>&1 || { echo "❌ AWS CLI is required but not installed. Aborting." >&2; exit 1; }
+    echo "✅ All prerequisites installed"
+    
+    # Step 2: Setup Python environment with uv (if available) or fallback to venv
+    echo ""
+    echo "🐍 Setting up Python environment..."
+    if command -v uv >/dev/null 2>&1; then
+        if [ ! -d ".venv" ] || [ ! -f ".venv/bin/activate" ]; then
+            echo "Creating virtual environment with uv..."
+            uv venv .venv
+        fi
+        echo "✅ Virtual environment ready (using uv)"
+    else
+        if [ ! -d ".venv" ]; then
+            echo "Creating virtual environment with standard venv..."
+            python3 -m venv .venv
+        fi
+        echo "✅ Virtual environment ready (using standard venv)"
+    fi
+    
+    # Step 3: Install dependencies
+    echo ""
+    echo "📦 Installing dependencies..."
+    
+    # Backend dependencies
+    if command -v uv >/dev/null 2>&1; then
+        echo "Installing backend dependencies with uv..."
+        source .venv/bin/activate && cd backend && uv pip install -r requirements.txt && cd ..
+    else
+        echo "Installing backend dependencies with pip..."
+        source .venv/bin/activate && cd backend && pip install -r requirements.txt && cd ..
+    fi
+    
+    # Frontend dependencies (only if node_modules doesn't exist or package.json is newer)
+    if [ ! -d "frontend/node_modules" ] || [ "frontend/package.json" -nt "frontend/node_modules" ]; then
+        echo "Installing frontend dependencies..."
+        cd frontend && npm install && cd ..
+    else
+        echo "Frontend dependencies already up to date"
+    fi
+    echo "✅ All dependencies installed"
+    
+    # Step 4: Start DynamoDB
+    echo ""
+    echo "🗄️ Starting DynamoDB local..."
+    # Handle existing container properly
+    if docker ps -a --format '{{{{.Names}}' | grep -q '^dynamodb-local$'; then
+        if docker ps --format '{{{{.Names}}' | grep -q '^dynamodb-local$'; then
+            echo "✅ DynamoDB local is already running"
+        else
+            echo "Starting existing DynamoDB container..."
+            docker start dynamodb-local
+            echo "✅ DynamoDB local container restarted"
+        fi
+    else
+        echo "Creating new DynamoDB container..."
+        docker network create kidsrewards-network 2>/dev/null || true
+        mkdir -p data
+        docker run --name dynamodb-local \
+            --network kidsrewards-network \
+            -p 8000:8000 \
+            -v "$(pwd)/data:/home/dynamodblocal/data" \
+            -d \
+            amazon/dynamodb-local \
+            -jar DynamoDBLocal.jar -sharedDb -dbPath ./data
+        echo "✅ DynamoDB local container created and started"
+    fi
+    
+    # Wait for DynamoDB to be ready
+    echo "Waiting for DynamoDB to be ready..."
+    for i in {1..30}; do
+        if aws dynamodb list-tables --endpoint-url http://localhost:8000 >/dev/null 2>&1; then
+            echo "✅ DynamoDB is ready"
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            echo "❌ DynamoDB failed to start after 30 seconds"
+            exit 1
+        fi
+        sleep 1
+    done
+    
+    # Step 5: Create tables
+    echo ""
+    echo "📊 Setting up database tables..."
+    just db-create-tables
+    
+    # Step 6: Build SAM application
+    echo ""
+    echo "🔨 Building SAM application..."
+    cd backend && sam build -t template.yaml && cd ..
+    echo "✅ SAM application built"
+    
+    # Step 7: Start services with auto-reload
+    echo ""
+    echo "🎯 Starting services with auto-reload..."
+    echo "================================================"
+    
+    # Check if tmux is available
+    if command -v tmux &> /dev/null; then
+        # Kill existing session if it exists
+        tmux kill-session -t kids-rewards 2>/dev/null || true
+        
+        # Create new tmux session
+        tmux new-session -d -s kids-rewards -n "Kids Rewards Dev"
+        
+        # Split into 3 panes
+        tmux split-window -h -t kids-rewards
+        tmux split-window -v -t kids-rewards
+        
+        # Start backend with auto-reload in first pane
+        tmux send-keys -t kids-rewards:0.0 "sam local start-api -t backend/template.yaml \\
+            --env-vars local-env.json \\
+            --docker-network kidsrewards-network \\
+            --warm-containers LAZY \\
+            --parameter-overrides \"AppImageUri=kidsrewardslambdafunction:latest TableNamePrefix=local- LocalDynamoDBEndpoint=http://localhost:8000\"" Enter
+        
+        # Start frontend with hot-reload in second pane (on port 3001)
+        tmux send-keys -t kids-rewards:0.1 "cd frontend && PORT=3001 npm start" Enter
+        
+        # Show status in third pane
+        tmux send-keys -t kids-rewards:0.2 "just status" Enter
+        
+        echo ""
+        echo "✅ Development environment started successfully!"
+        echo ""
+        echo "📍 Services are running at:"
+        echo "   • Frontend: http://localhost:3001"
+        echo "   • Backend API: http://localhost:3000"
+        echo "   • DynamoDB: http://localhost:8000"
+        echo ""
+        echo "🔄 Auto-reload is enabled for both frontend and backend"
+        echo ""
+        echo "📺 To view the development session:"
+        echo "   tmux attach -t kids-rewards"
+        echo ""
+        echo "🛑 To stop all services:"
+        echo "   just stop-dev"
+        echo ""
+        echo "🔑 Test credentials:"
+        echo "   • Parent: testparent / password456"
+        echo "   • Kid: testkid / password123"
+    else
+        echo ""
+        echo "⚠️  tmux not found. Starting services in background..."
+        echo ""
+        
+        # Start backend in background
+        sam local start-api -t backend/template.yaml \
+            --env-vars local-env.json \
+            --docker-network kidsrewards-network \
+            --warm-containers LAZY \
+            --parameter-overrides "AppImageUri=kidsrewardslambdafunction:latest TableNamePrefix=local- LocalDynamoDBEndpoint=http://localhost:8000" \
+            > backend.log 2>&1 &
+        BACKEND_PID=$!
+        echo "Backend started (PID: $BACKEND_PID, logs: backend.log)"
+        
+        # Start frontend in background (on port 3001)
+        cd frontend && PORT=3001 npm start > ../frontend.log 2>&1 &
+        FRONTEND_PID=$!
+        cd ..
+        echo "Frontend started (PID: $FRONTEND_PID, logs: frontend.log)"
+        
+        # Save PIDs for stop-dev command
+        echo $BACKEND_PID > .backend.pid
+        echo $FRONTEND_PID > .frontend.pid
+        
+        echo ""
+        echo "✅ Development environment started successfully!"
+        echo ""
+        echo "📍 Services are running at:"
+        echo "   • Frontend: http://localhost:3001"
+        echo "   • Backend API: http://localhost:3000"
+        echo "   • DynamoDB: http://localhost:8000"
+        echo ""
+        echo "🔄 Auto-reload is enabled for both frontend and backend"
+        echo ""
+        echo "📝 View logs:"
+        echo "   • Backend: tail -f backend.log"
+        echo "   • Frontend: tail -f frontend.log"
+        echo ""
+        echo "🛑 To stop all services:"
+        echo "   just stop-dev"
+        echo ""
+        echo "🔑 Test credentials:"
+        echo "   • Parent: testparent / password456"
+        echo "   • Kid: testkid / password123"
+    fi
+
 # Install all dependencies (backend and frontend)
 install:
-    @echo "Installing backend dependencies..."
-    cd backend && pip install -r requirements.txt
-    @echo "Installing frontend dependencies..."
-    cd frontend && npm install
-    @echo "✅ All dependencies installed!"
+    #!/usr/bin/env bash
+    echo "Installing backend dependencies..."
+    if command -v uv >/dev/null 2>&1; then
+        if [ -d ".venv" ] && [ -f ".venv/bin/activate" ]; then
+            source .venv/bin/activate && cd backend && uv pip install -r requirements.txt && cd ..
+        else
+            cd backend && uv pip install -r requirements.txt && cd ..
+        fi
+        echo "✅ Backend dependencies installed with uv"
+    else
+        if [ -d ".venv" ] && [ -f ".venv/bin/activate" ]; then
+            source .venv/bin/activate && cd backend && pip install -r requirements.txt && cd ..
+        else
+            cd backend && pip install -r requirements.txt && cd ..
+        fi
+        echo "✅ Backend dependencies installed with pip"
+    fi
+    echo "Installing frontend dependencies..."
+    cd frontend && npm install && cd ..
+    echo "✅ All dependencies installed!"
 
-# Create/activate Python virtual environment
+# Create/activate Python virtual environment (using uv if available)
 venv:
-    @echo "Creating Python virtual environment..."
-    python -m venv .venv
-    @echo "✅ Virtual environment created at .venv"
-    @echo "To activate: source .venv/bin/activate (Linux/Mac) or .venv\\Scripts\\activate (Windows)"
+    #!/usr/bin/env bash
+    if command -v uv >/dev/null 2>&1; then
+        echo "Creating Python virtual environment with uv..."
+        uv venv .venv
+        echo "✅ Virtual environment created at .venv (using uv)"
+    else
+        echo "Creating Python virtual environment with standard venv..."
+        python3 -m venv .venv
+        echo "✅ Virtual environment created at .venv (using standard venv)"
+    fi
+    echo "To activate: source .venv/bin/activate (Linux/Mac) or .venv\\Scripts\\activate (Windows)"
 
 # === Backend Commands ===
 
@@ -66,8 +300,8 @@ fix-backend:
 
 # Start frontend development server
 frontend:
-    @echo "Starting frontend development server..."
-    cd frontend && npm start
+    @echo "Starting frontend development server on port 3001..."
+    cd frontend && PORT=3001 npm start
 
 # Build frontend for production
 build-frontend:
@@ -109,8 +343,8 @@ test: test-backend test-frontend
 format: format-backend lint-backend
     @echo "✅ All code formatted and linted!"
 
-# Start both backend and frontend (requires two terminal tabs)
-dev:
+# Legacy dev command - now use start-dev instead
+dev-legacy:
     @echo "Starting full development environment..."
     @echo "This requires multiple terminals. Run these commands in separate terminals:"
     @echo "  1. just backend   (for backend API)"
@@ -118,7 +352,7 @@ dev:
     @echo ""
     @echo "Or use 'just dev-tmux' if you have tmux installed"
 
-# Start development environment with tmux (if available)
+# Start development environment with tmux (if available) - DEPRECATED: use start-dev instead
 dev-tmux:
     #!/usr/bin/env bash
     if command -v tmux &> /dev/null; then
@@ -182,6 +416,116 @@ install-hook:
 
 # === Docker/Database Commands ===
 
+# Create all DynamoDB tables if they don't exist
+db-create-tables:
+    #!/usr/bin/env bash
+    echo "Creating DynamoDB tables if they don't exist..."
+    # Check if tables exist first
+    existing_tables=$(aws dynamodb list-tables --endpoint-url http://localhost:8000 --output json 2>/dev/null | jq -r '.TableNames[]' 2>/dev/null || echo "")
+    
+    # KidsRewardsUsers table
+    if echo "$existing_tables" | grep -q "KidsRewardsUsers"; then
+        echo "✓ KidsRewardsUsers table already exists"
+    else
+        echo "Creating KidsRewardsUsers table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsUsers \
+            --attribute-definitions AttributeName=username,AttributeType=S \
+            --key-schema AttributeName=username,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsUsers"
+    fi
+    
+    # KidsRewardsStoreItems table
+    if echo "$existing_tables" | grep -q "KidsRewardsStoreItems"; then
+        echo "✓ KidsRewardsStoreItems table already exists"
+    else
+        echo "Creating KidsRewardsStoreItems table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsStoreItems \
+            --attribute-definitions AttributeName=id,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsStoreItems"
+    fi
+    
+    # KidsRewardsPurchaseLogs table
+    if echo "$existing_tables" | grep -q "KidsRewardsPurchaseLogs"; then
+        echo "✓ KidsRewardsPurchaseLogs table already exists"
+    else
+        echo "Creating KidsRewardsPurchaseLogs table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsPurchaseLogs \
+            --attribute-definitions \
+                AttributeName=id,AttributeType=S \
+                AttributeName=user_id,AttributeType=S \
+                AttributeName=timestamp,AttributeType=S \
+                AttributeName=status,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --global-secondary-indexes \
+                '[{"IndexName": "UserIdTimestampIndex","KeySchema": [{"AttributeName": "user_id", "KeyType": "HASH"},{"AttributeName": "timestamp", "KeyType": "RANGE"}],"Projection": {"ProjectionType": "ALL"},"ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}},{"IndexName": "StatusTimestampIndex","KeySchema": [{"AttributeName": "status", "KeyType": "HASH"},{"AttributeName": "timestamp", "KeyType": "RANGE"}],"Projection": {"ProjectionType": "ALL"},"ProvisionedThroughput": {"ReadCapacityUnits": 5, "WriteCapacityUnits": 5}}]' \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsPurchaseLogs"
+    fi
+    
+    # KidsRewardsChores table
+    if echo "$existing_tables" | grep -q "KidsRewardsChores"; then
+        echo "✓ KidsRewardsChores table already exists"
+    else
+        echo "Creating KidsRewardsChores table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsChores \
+            --attribute-definitions \
+                AttributeName=id,AttributeType=S \
+                AttributeName=created_by_parent_id,AttributeType=S \
+                AttributeName=is_active,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --global-secondary-indexes \
+                '[{"IndexName": "ParentChoresIndex","KeySchema": [{"AttributeName": "created_by_parent_id", "KeyType": "HASH"}],"Projection": {"ProjectionType": "ALL"},"ProvisionedThroughput": {"ReadCapacityUnits": 2, "WriteCapacityUnits": 2}},{"IndexName": "ActiveChoresIndex","KeySchema": [{"AttributeName": "is_active", "KeyType": "HASH"}],"Projection": {"ProjectionType": "ALL"},"ProvisionedThroughput": {"ReadCapacityUnits": 2, "WriteCapacityUnits": 2}}]' \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsChores"
+    fi
+    
+    # KidsRewardsChoreLogs table
+    if echo "$existing_tables" | grep -q "KidsRewardsChoreLogs"; then
+        echo "✓ KidsRewardsChoreLogs table already exists"
+    else
+        echo "Creating KidsRewardsChoreLogs table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsChoreLogs \
+            --attribute-definitions \
+                AttributeName=id,AttributeType=S \
+                AttributeName=kid_id,AttributeType=S \
+                AttributeName=submitted_at,AttributeType=S \
+                AttributeName=status,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --global-secondary-indexes \
+                '[{"IndexName": "KidChoreLogIndex","KeySchema": [{"AttributeName": "kid_id", "KeyType": "HASH"},{"AttributeName": "submitted_at", "KeyType": "RANGE"}],"Projection": {"ProjectionType": "ALL"},"ProvisionedThroughput": {"ReadCapacityUnits": 2, "WriteCapacityUnits": 2}},{"IndexName": "ChoreLogStatusIndex","KeySchema": [{"AttributeName": "status", "KeyType": "HASH"},{"AttributeName": "submitted_at", "KeyType": "RANGE"}],"Projection": {"ProjectionType": "ALL"},"ProvisionedThroughput": {"ReadCapacityUnits": 2, "WriteCapacityUnits": 2}}]' \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsChoreLogs"
+    fi
+    
+    # KidsRewardsRequests table
+    if echo "$existing_tables" | grep -q "KidsRewardsRequests"; then
+        echo "✓ KidsRewardsRequests table already exists"
+    else
+        echo "Creating KidsRewardsRequests table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsRequests \
+            --attribute-definitions \
+                AttributeName=id,AttributeType=S \
+                AttributeName=requester_id,AttributeType=S \
+                AttributeName=created_at,AttributeType=S \
+                AttributeName=status,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --global-secondary-indexes \
+                '[{"IndexName": "RequesterIdCreatedAtGSI","KeySchema": [{"AttributeName":"requester_id","KeyType":"HASH"}, {"AttributeName":"created_at","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"},"ProvisionedThroughput":{"ReadCapacityUnits":2,"WriteCapacityUnits":2}},{"IndexName": "StatusCreatedAtGSI","KeySchema": [{"AttributeName":"status","KeyType":"HASH"}, {"AttributeName":"created_at","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"},"ProvisionedThroughput":{"ReadCapacityUnits":2,"WriteCapacityUnits":2}}]' \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsRequests"
+    fi
+    
+    echo "✅ All tables ready!"
+
 # Start DynamoDB local (following README instructions)
 db-start:
     @echo "Starting DynamoDB local..."
@@ -212,16 +556,16 @@ db-start:
 db-start-detached:
     @echo "Starting DynamoDB local in background..."
     @echo "Creating Docker network if it doesn't exist..."
-    -docker network create kidsrewards-network 2>/dev/null || true
+    @-docker network create kidsrewards-network 2>/dev/null || true
     @echo "Creating data directory if it doesn't exist..."
-    mkdir -p data
+    @mkdir -p data
     @echo "Checking if DynamoDB container already exists..."
     @if docker ps -a --format '{{{{.Names}}' | grep -q '^dynamodb-local$$'; then \
         if docker ps --format '{{{{.Names}}' | grep -q '^dynamodb-local$$'; then \
             echo "✅ DynamoDB local is already running"; \
         else \
             echo "Starting existing DynamoDB container..."; \
-            docker start dynamodb-local; \
+            docker start dynamodb-local >/dev/null 2>&1; \
             echo "✅ DynamoDB local container restarted"; \
         fi \
     else \
@@ -232,7 +576,7 @@ db-start-detached:
             -v "$$(pwd)/data:/home/dynamodblocal/data" \
             -d \
             amazon/dynamodb-local \
-            -jar DynamoDBLocal.jar -sharedDb -dbPath ./data; \
+            -jar DynamoDBLocal.jar -sharedDb -dbPath ./data >/dev/null 2>&1; \
         echo "✅ DynamoDB local is running in background on port 8000"; \
     fi
 
@@ -245,6 +589,45 @@ db-stop:
 db-remove:
     @echo "Removing DynamoDB container..."
     docker rm dynamodb-local
+
+# Stop all development services
+stop-dev:
+    #!/usr/bin/env bash
+    echo "🛑 Stopping Kids Rewards Development Environment..."
+    # Stop tmux session if it exists
+    if tmux has-session -t kids-rewards 2>/dev/null; then
+        echo "Stopping tmux session..."
+        tmux kill-session -t kids-rewards
+        echo "✅ Tmux session stopped"
+    fi
+    # Stop background processes if PIDs exist
+    if [ -f .backend.pid ]; then
+        PID=$(cat .backend.pid)
+        if kill -0 $PID 2>/dev/null; then
+            echo "Stopping backend (PID: $PID)..."
+            kill $PID
+        fi
+        rm .backend.pid
+    fi
+    if [ -f .frontend.pid ]; then
+        PID=$(cat .frontend.pid)
+        if kill -0 $PID 2>/dev/null; then
+            echo "Stopping frontend (PID: $PID)..."
+            kill $PID
+        fi
+        rm .frontend.pid
+    fi
+    # Also try to kill any remaining SAM/npm processes
+    pkill -f "sam local start-api" 2>/dev/null || true
+    pkill -f "npm start" 2>/dev/null || true
+    pkill -f "react-scripts start" 2>/dev/null || true
+    echo "✅ All application services stopped"
+    echo ""
+    echo "📝 Note: DynamoDB is still running. To stop it:"
+    echo "   just db-stop"
+    echo ""
+    echo "To restart development:"
+    echo "   just start-dev"
 
 # List DynamoDB tables
 db-list:
@@ -286,3 +669,5 @@ b: backend
 f: frontend
 t: test
 fmt: format
+dev: start-dev
+stop: stop-dev

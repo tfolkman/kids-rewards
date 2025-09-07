@@ -41,24 +41,25 @@ Make sure you have these tools installed:
 
 ### 🎯 Super Quick Start
 
-If you just want to get running quickly:
+With the new simplified setup, you can start everything with a single command:
 
 ```bash
-# 1. Create and activate Python virtual environment
-just venv
-source .venv/bin/activate  # On Mac/Linux
-# .venv\Scripts\activate   # On Windows
+# Start the complete development environment
+just dev
 
-# 2. Install all dependencies
-just install
-
-# 3. Start the database (in background)
-just db-start-detached
-
-# 4. In separate terminals:
-just backend   # Terminal 1: Start backend API
-just frontend  # Terminal 2: Start frontend
+# Or use the full command name
+just start-dev
 ```
+
+This single command will:
+- ✅ Check all prerequisites (Docker, Python, Node.js, AWS CLI, SAM CLI)
+- ✅ Set up Python virtual environment (using `uv` if available for faster installs)
+- ✅ Install all dependencies automatically
+- ✅ Start DynamoDB local database
+- ✅ Create all required database tables
+- ✅ Build the SAM application
+- ✅ Launch backend API and frontend with auto-reload enabled
+- ✅ Use tmux for better terminal management (or background processes if tmux not available)
 
 Then open http://localhost:3001 in your browser!
 
@@ -66,9 +67,11 @@ Then open http://localhost:3001 in your browser!
 *   Parent: `testparent` / `password456`
 *   Kid: `testkid` / `password123`
 
-### Detailed Setup Instructions
+### Alternative Setup Methods
 
-#### Setting up the Local Backend
+If you prefer to set up components individually or need to troubleshoot:
+
+#### Manual Component Setup
 
 1.  **Start Your Local Database:**
     ```bash
@@ -78,16 +81,11 @@ Then open http://localhost:3001 in your browser!
 
 2.  **Create Your Database Tables:**
     ```bash
-    # Check if tables already exist
-    just db-list
+    # Automatically create all tables
+    just db-create-tables
     
-    # If tables don't exist, create them using AWS CLI:
-    aws dynamodb create-table \
-        --table-name KidsRewardsUsers \
-        --attribute-definitions AttributeName=username,AttributeType=S \
-        --key-schema AttributeName=username,KeyType=HASH \
-        --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
-        --endpoint-url http://localhost:8000
+    # Or check existing tables
+    just db-list
     ```
     
     # Note: Full table creation commands are available in the original setup,
@@ -233,67 +231,81 @@ Then open http://localhost:3001 in your browser!
         *   `--endpoint-url http://localhost:8000` is very important! It tells the AWS CLI to talk to your *local* database, not the real one in the cloud.
         *   If you ever need to start fresh, you can delete these tables with `aws dynamodb delete-table --table-name YourTableName --endpoint-url http://localhost:8000` (e.g., for `KidsRewardsUsers`, `KidsRewardsStoreItems`, `KidsRewardsPurchaseLogs`, `KidsRewardsChores`, `KidsRewardsChoreLogs`, `KidsRewardsRequests`) and then run the `create-table` commands again.
 
-3.  **Set up Python Environment and Seed Data:**
+3.  **Set up Python Environment:**
     ```bash
-    # Create and activate virtual environment
+    # Create virtual environment (uses uv if available)
     just venv
     source .venv/bin/activate  # Mac/Linux
     # .venv\Scripts\activate   # Windows
     
-    # Install dependencies
+    # Install all dependencies
     just install
     ```
-    *   **Seed the database with test data (if needed):**
-        ```bash
-        PYTHONPATH=. DYNAMODB_ENDPOINT_OVERRIDE=http://localhost:8000 \
-        USERS_TABLE_NAME=KidsRewardsUsers \
-        STORE_ITEMS_TABLE_NAME=KidsRewardsStoreItems \
-        PURCHASE_LOGS_TABLE_NAME=KidsRewardsPurchaseLogs \
-        CHORES_TABLE_NAME=KidsRewardsChores \
-        CHORE_LOGS_TABLE_NAME=KidsRewardsChoreLogs \
-        REQUESTS_TABLE_NAME=KidsRewardsRequests \
-        python scripts/seed_dynamodb.py --environment local
-        ```
-        This adds test users (testparent/testkid) and sample data.
 
-4.  **Run the Backend Application:**
+4.  **Run Services Individually:**
     ```bash
-    # Make sure you have local-env.json configured
-    # (The file is already set up with correct settings)
-    
-    # Start the backend API
+    # Start backend API (port 3000)
     just backend
-    ```
     
-    This runs your backend API at http://localhost:3000
-
-#### Setting up the Local Frontend
-
-1.  **Run the Frontend:**
-    ```bash
-    # In a new terminal
+    # In another terminal, start frontend (port 3001)
     just frontend
     ```
-    
-    This starts the React app at http://localhost:3001
 
-### Useful Development Commands
+### Development Commands
 
 ```bash
-# Check status of all services
-just status
+# Primary Commands
+just dev              # Start complete dev environment (recommended)
+just stop             # Stop all development services
 
-# Run all tests
-just test
+# Service Management
+just start-dev        # Full command name for starting everything
+just stop-dev         # Full command name for stopping everything
+just status           # Check if services are running
+just health           # Full health check with versions
 
-# Format and lint code
-just format
+# Database Commands
+just db-start-detached    # Start DynamoDB in background
+just db-stop              # Stop DynamoDB
+just db-create-tables     # Create all required tables
+just db-list              # List existing tables
 
-# Run pre-commit checks
-just pre-commit
+# Testing & Quality
+just test             # Run all tests
+just test-backend     # Backend tests only
+just test-frontend    # Frontend tests only
+just e2e              # End-to-end tests
+just format           # Format and lint code
+just pre-commit       # Run pre-commit checks
 
-# See all available commands
-just
+# Utility Commands
+just clean            # Clean build artifacts
+just logs-backend     # View backend logs
+```
+
+### Viewing Running Services
+
+When using `just dev`, services run in tmux. To view them:
+
+```bash
+# Attach to tmux session
+tmux attach -t kids-rewards
+
+# Navigate between panes
+Ctrl+B then arrow keys
+
+# Detach from tmux (leave services running)
+Ctrl+B then D
+```
+
+### Stopping Services
+
+```bash
+# Stop all application services
+just stop
+
+# Stop database as well
+just db-stop
 ```
 
 ---
