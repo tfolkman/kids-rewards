@@ -321,17 +321,55 @@ test-frontend-watch:
 # Run Playwright E2E tests
 e2e:
     @echo "Running Playwright E2E tests..."
-    cd frontend && npm run e2e
+    cd frontend && npx playwright test
 
 # Run Playwright E2E tests with UI
 e2e-ui:
     @echo "Running Playwright E2E tests with UI..."
-    cd frontend && npm run e2e:ui
+    cd frontend && npx playwright test --ui
 
 # Show Playwright test report
 e2e-report:
     @echo "Opening Playwright test report..."
-    cd frontend && npm run e2e:report
+    cd frontend && npx playwright show-report
+
+# Run specific E2E test file
+e2e-file file:
+    @echo "Running E2E test: {{file}}..."
+    cd frontend && npx playwright test {{file}}
+
+# Run E2E tests for chore submission
+e2e-chores:
+    @echo "Running chore submission E2E tests..."
+    cd frontend && npx playwright test chore-submission.spec.ts --reporter=list
+
+# Run E2E tests in headed mode (visible browser)
+e2e-headed:
+    @echo "Running E2E tests with visible browser..."
+    cd frontend && npx playwright test --headed
+
+# Run E2E tests for a specific browser
+e2e-chrome:
+    @echo "Running E2E tests on Chrome only..."
+    cd frontend && npx playwright test --project=chromium
+
+e2e-firefox:
+    @echo "Running E2E tests on Firefox only..."
+    cd frontend && npx playwright test --project=firefox
+
+e2e-safari:
+    @echo "Running E2E tests on Safari/WebKit only..."
+    cd frontend && npx playwright test --project=webkit
+
+# Debug a specific E2E test
+e2e-debug test:
+    @echo "Debugging E2E test: {{test}}..."
+    cd frontend && npx playwright test {{test}} --debug
+
+# Install Playwright browsers if needed
+e2e-install:
+    @echo "Installing Playwright browsers..."
+    cd frontend && npx playwright install
 
 # === Combined Commands ===
 
