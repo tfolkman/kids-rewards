@@ -150,51 +150,52 @@ jobs:
     - name: Seed test data
       run: |
         cd backend
-        python -c "
-import os
-os.environ['DYNAMODB_ENDPOINT_OVERRIDE'] = 'http://localhost:8000'
-os.environ['USERS_TABLE_NAME'] = 'KidsRewardsUsers'
-os.environ['STORE_ITEMS_TABLE_NAME'] = 'KidsRewardsStoreItems'
-os.environ['CHORES_TABLE_NAME'] = 'KidsRewardsChores'
-os.environ['APP_SECRET_KEY'] = 'test-secret-key-for-ci-environment-32chars'
-
-import crud
-import security
-from datetime import datetime
-import uuid
-
-# Create test users
-testparent = crud.create_user('testparent', security.hash_password('password456'), 'parent')
-testkid = crud.create_user('testkid', security.hash_password('password123'), 'kid')
-print('Test users created')
-
-# Create some test chores
-if testparent:
-    chore1 = {
-        'id': str(uuid.uuid4()),
-        'name': 'Clean Room',
-        'description': 'Make bed and organize toys',
-        'points_value': 10,
-        'created_by_parent_id': testparent['id'],
-        'created_at': datetime.utcnow().isoformat(),
-        'updated_at': datetime.utcnow().isoformat(),
-        'is_active': True
-    }
-    crud.chores_table.put_item(Item=chore1)
-    
-    chore2 = {
-        'id': str(uuid.uuid4()),
-        'name': 'Do Homework',
-        'description': 'Complete all assignments',
-        'points_value': 15,
-        'created_by_parent_id': testparent['id'],
-        'created_at': datetime.utcnow().isoformat(),
-        'updated_at': datetime.utcnow().isoformat(),
-        'is_active': True
-    }
-    crud.chores_table.put_item(Item=chore2)
-    print('Test chores created')
-"
+        cat > seed_test_data.py << 'PYTHON_SCRIPT'
+        import os
+        os.environ['DYNAMODB_ENDPOINT_OVERRIDE'] = 'http://localhost:8000'
+        os.environ['USERS_TABLE_NAME'] = 'KidsRewardsUsers'
+        os.environ['STORE_ITEMS_TABLE_NAME'] = 'KidsRewardsStoreItems'
+        os.environ['CHORES_TABLE_NAME'] = 'KidsRewardsChores'
+        os.environ['APP_SECRET_KEY'] = 'test-secret-key-for-ci-environment-32chars'
+        
+        import crud
+        import security
+        from datetime import datetime
+        import uuid
+        
+        # Create test users
+        testparent = crud.create_user('testparent', security.hash_password('password456'), 'parent')
+        testkid = crud.create_user('testkid', security.hash_password('password123'), 'kid')
+        print('Test users created')
+        
+        # Create some test chores
+        if testparent:
+            chore1 = {
+                'id': str(uuid.uuid4()),
+                'name': 'Clean Room',
+                'description': 'Make bed and organize toys',
+                'points_value': 10,
+                'created_by_parent_id': testparent['id'],
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat(),
+                'is_active': True
+            }
+            crud.chores_table.put_item(Item=chore1)
+            
+            chore2 = {
+                'id': str(uuid.uuid4()),
+                'name': 'Do Homework',
+                'description': 'Complete all assignments',
+                'points_value': 15,
+                'created_by_parent_id': testparent['id'],
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat(),
+                'is_active': True
+            }
+            crud.chores_table.put_item(Item=chore2)
+            print('Test chores created')
+        PYTHON_SCRIPT
+        python seed_test_data.py
 
     # Start backend API
     - name: Start backend API
