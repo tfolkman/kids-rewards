@@ -132,7 +132,7 @@ class Chore(ChoreBase):
 
 
 class ChoreSubmission(BaseModel):
-    chore_id: str
+    # chore_id comes from the URL path parameter, not the request body
     # kid_id will be from the authenticated user
     effort_minutes: Optional[int] = Field(default=0, ge=0, le=240)  # How long they worked on it
 

@@ -98,7 +98,18 @@ const ChoresPage: React.FC = () => {
       fetchAvailableChores();
       fetchChoreHistory();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to submit chore.');
+      // Handle validation errors from FastAPI which come as an array of error objects
+      const errorDetail = err.response?.data?.detail;
+      let errorMessage = 'Failed to submit chore.';
+      
+      if (typeof errorDetail === 'string') {
+        errorMessage = errorDetail;
+      } else if (Array.isArray(errorDetail) && errorDetail.length > 0) {
+        // Extract the message from the first validation error
+        errorMessage = errorDetail[0].msg || errorMessage;
+      }
+      
+      setError(errorMessage);
       console.error(err);
     } finally {
       setIsSubmitting(null);

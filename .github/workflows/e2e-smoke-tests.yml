@@ -1,0 +1,146 @@
+name: E2E Smoke Tests (Quick)
+
+on:
+  push:
+    branches: [ "**" ] # Run on all branches
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/e2e-smoke-tests.yml"
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15 # Shorter timeout for smoke tests
+    
+    # Only run the critical path tests
+    strategy:
+      matrix:
+        test-file: 
+          - "chore-submission.spec.ts"
+          # Add other critical test files here as they're created
+    
+    services:
+      dynamodb:
+        image: amazon/dynamodb-local:latest
+        ports:
+          - 8000:8000
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Python and Node
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/pip
+          ~/work/kids_rewards/kids_rewards/frontend/node_modules
+          ~/.cache/ms-playwright
+        key: ${{ runner.os }}-deps-${{ hashFiles('**/requirements.txt', '**/package-lock.json') }}
+
+    - name: Quick setup
+      run: |
+        # Backend deps
+        pip install -r backend/requirements.txt
+        pip install aws-sam-cli
+        
+        # Frontend deps
+        cd frontend && npm ci && cd ..
+        
+        # Only install Chromium for speed
+        cd frontend && npx playwright install chromium && cd ..
+        
+        # AWS config for DynamoDB local
+        aws configure set aws_access_key_id test
+        aws configure set aws_secret_access_key test
+        aws configure set region us-east-1
+
+    - name: Setup test environment
+      run: |
+        # Quick table creation script
+        cd backend
+        python -c "
+import subprocess
+import time
+
+tables = ['KidsRewardsUsers', 'KidsRewardsStoreItems', 'KidsRewardsPurchaseLogs', 
+          'KidsRewardsChores', 'KidsRewardsChoreLogs', 'KidsRewardsRequests']
+
+for table in tables:
+    # Simplified table creation - just the minimum needed for tests
+    cmd = f'aws dynamodb create-table --table-name {table} --attribute-definitions AttributeName=id,AttributeType=S --key-schema AttributeName=id,KeyType=HASH --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1 --endpoint-url http://localhost:8000'
+    subprocess.run(cmd, shell=True, capture_output=True)
+print('Tables created')
+        "
+        
+        # Build SAM
+        sam build -t template.yaml
+        
+        # Start backend
+        cat > local-env.json << EOF
+        {
+          "KidsRewardsLambdaFunction": {
+            "DYNAMODB_ENDPOINT_OVERRIDE": "http://localhost:8000",
+            "USERS_TABLE_NAME": "KidsRewardsUsers",
+            "STORE_ITEMS_TABLE_NAME": "KidsRewardsStoreItems",
+            "PURCHASE_LOGS_TABLE_NAME": "KidsRewardsPurchaseLogs",
+            "CHORES_TABLE_NAME": "KidsRewardsChores",
+            "CHORE_LOGS_TABLE_NAME": "KidsRewardsChoreLogs",
+            "REQUESTS_TABLE_NAME": "KidsRewardsRequests",
+            "APP_SECRET_KEY": "test-secret-key-32chars-minimum!"
+          }
+        }
+        EOF
+        
+        sam local start-api -t template.yaml --env-vars local-env.json > /dev/null 2>&1 &
+        cd ..
+
+    - name: Wait for services
+      run: |
+        # Wait for backend
+        for i in {1..30}; do
+          if curl -sSf http://localhost:3000/hello > /dev/null 2>&1; then
+            break
+          fi
+          sleep 2
+        done
+        
+        # Start frontend
+        cd frontend
+        PORT=3001 REACT_APP_API_URL=http://localhost:3000 npm start > /dev/null 2>&1 &
+        cd ..
+        
+        # Wait for frontend
+        for i in {1..30}; do
+          if curl -sSf http://localhost:3001 > /dev/null 2>&1; then
+            break
+          fi
+          sleep 2
+        done
+
+    - name: Run smoke test - ${{ matrix.test-file }}
+      run: |
+        cd frontend
+        npx playwright test ${{ matrix.test-file }} --project=chromium --reporter=list
+      env:
+        PLAYWRIGHT_BASE_URL: http://localhost:3001
+
+    - name: Upload failure artifacts
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: smoke-test-failure-${{ matrix.test-file }}
+        path: |
+          frontend/playwright-report/
+          frontend/test-results/
+        retention-days: 3
