@@ -69,19 +69,20 @@ jobs:
       run: |
         # Quick table creation script
         cd backend
-        python -c "
-import subprocess
-import time
-
-tables = ['KidsRewardsUsers', 'KidsRewardsStoreItems', 'KidsRewardsPurchaseLogs', 
-          'KidsRewardsChores', 'KidsRewardsChoreLogs', 'KidsRewardsRequests']
-
-for table in tables:
-    # Simplified table creation - just the minimum needed for tests
-    cmd = f'aws dynamodb create-table --table-name {table} --attribute-definitions AttributeName=id,AttributeType=S --key-schema AttributeName=id,KeyType=HASH --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1 --endpoint-url http://localhost:8000'
-    subprocess.run(cmd, shell=True, capture_output=True)
-print('Tables created')
-        "
+        cat > create_tables.py << 'PYTHON_SCRIPT'
+        import subprocess
+        import time
+        
+        tables = ['KidsRewardsUsers', 'KidsRewardsStoreItems', 'KidsRewardsPurchaseLogs', 
+                  'KidsRewardsChores', 'KidsRewardsChoreLogs', 'KidsRewardsRequests']
+        
+        for table in tables:
+            # Simplified table creation - just the minimum needed for tests
+            cmd = f'aws dynamodb create-table --table-name {table} --attribute-definitions AttributeName=id,AttributeType=S --key-schema AttributeName=id,KeyType=HASH --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1 --endpoint-url http://localhost:8000'
+            subprocess.run(cmd, shell=True, capture_output=True)
+        print('Tables created')
+        PYTHON_SCRIPT
+        python create_tables.py
         
         # Build SAM
         sam build -t template.yaml
