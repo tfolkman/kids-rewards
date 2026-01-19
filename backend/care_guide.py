@@ -4,8 +4,8 @@ Pet Care Guide Module
 Generates detailed, kid-friendly care instructions for different pet species.
 Instructions are tailored to the pet's life stage and specific task type.
 """
+
 from enum import Enum
-from typing import Optional
 
 
 class CareTaskType(str, Enum):
@@ -365,11 +365,7 @@ def _detect_task_subtype(task_name: str, task_type: CareTaskType) -> str:
     return "default"
 
 
-def get_feeding_instructions(
-    species: str,
-    life_stage: LifeStage,
-    task_subtype: str = "insects"
-) -> str:
+def get_feeding_instructions(species: str, life_stage: LifeStage, task_subtype: str = "insects") -> str:
     """Get feeding instructions for a specific species and life stage."""
     if species == PetSpecies.BEARDED_DRAGON or species == "bearded_dragon":
         instructions = BEARDED_DRAGON_INSTRUCTIONS.get("feeding", {})
@@ -379,16 +375,13 @@ def get_feeding_instructions(
             # Get instructions for the specific life stage, or default to adult
             return subtype_instructions.get(
                 life_stage,
-                subtype_instructions.get(LifeStage.ADULT, "Follow standard feeding guidelines for your pet.")
+                subtype_instructions.get(LifeStage.ADULT, "Follow standard feeding guidelines for your pet."),
             ).strip()
 
     return "Follow the standard feeding guidelines for your pet type. Consult a vet or care guide for specific instructions."
 
 
-def get_water_instructions(
-    species: str,
-    life_stage: LifeStage
-) -> str:
+def get_water_instructions(species: str, life_stage: LifeStage) -> str:
     """Get water change instructions for a specific species."""
     if species == PetSpecies.BEARDED_DRAGON or species == "bearded_dragon":
         instructions = BEARDED_DRAGON_INSTRUCTIONS.get("water", {})
@@ -397,11 +390,7 @@ def get_water_instructions(
     return "Change water daily with fresh, clean water. Clean the water dish regularly."
 
 
-def get_cleaning_instructions(
-    species: str,
-    life_stage: LifeStage,
-    task_subtype: str = "spot_clean"
-) -> str:
+def get_cleaning_instructions(species: str, life_stage: LifeStage, task_subtype: str = "spot_clean") -> str:
     """Get cleaning instructions for a specific species."""
     if species == PetSpecies.BEARDED_DRAGON or species == "bearded_dragon":
         instructions = BEARDED_DRAGON_INSTRUCTIONS.get("cleaning", {})
@@ -410,11 +399,7 @@ def get_cleaning_instructions(
     return "Clean the habitat regularly to maintain a healthy environment."
 
 
-def get_dusting_instructions(
-    species: str,
-    life_stage: LifeStage,
-    task_subtype: str = "calcium"
-) -> str:
+def get_dusting_instructions(species: str, life_stage: LifeStage, task_subtype: str = "calcium") -> str:
     """Get supplement dusting instructions."""
     if species == PetSpecies.BEARDED_DRAGON or species == "bearded_dragon":
         instructions = BEARDED_DRAGON_INSTRUCTIONS.get("dusting", {})
@@ -423,12 +408,7 @@ def get_dusting_instructions(
     return "Follow supplement guidelines for your pet type."
 
 
-def get_task_description(
-    task_type: CareTaskType,
-    species: str,
-    life_stage: LifeStage,
-    task_name: str
-) -> str:
+def get_task_description(task_type: CareTaskType, species: str, life_stage: LifeStage, task_name: str) -> str:
     """
     Generate a detailed, kid-friendly task description.
 

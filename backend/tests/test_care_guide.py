@@ -1,14 +1,14 @@
 """Tests for the pet care guide module - TDD approach."""
-import pytest
+
 from care_guide import (
-    get_task_description,
-    get_feeding_instructions,
-    get_water_instructions,
+    CareTaskType,
+    LifeStage,
+    PetSpecies,
     get_cleaning_instructions,
     get_dusting_instructions,
-    CareTaskType,
-    PetSpecies,
-    LifeStage,
+    get_feeding_instructions,
+    get_task_description,
+    get_water_instructions,
 )
 
 
@@ -18,22 +18,18 @@ class TestFeedingInstructions:
     def test_adult_bearded_dragon_insect_feeding(self):
         """Adult bearded dragons get specific roach instructions."""
         instructions = get_feeding_instructions(
-            species=PetSpecies.BEARDED_DRAGON,
-            life_stage=LifeStage.ADULT,
-            task_subtype="insects"
+            species=PetSpecies.BEARDED_DRAGON, life_stage=LifeStage.ADULT, task_subtype="insects"
         )
 
         assert "3-5 adult Dubia roaches" in instructions
-        assert "1 inch" in instructions or "1\"" in instructions
+        assert "1 inch" in instructions or '1"' in instructions
         assert "calcium" in instructions.lower()
         assert "tongs" in instructions.lower() or "feed" in instructions.lower()
 
     def test_juvenile_bearded_dragon_insect_feeding(self):
         """Juvenile bearded dragons need more frequent feeding with smaller roaches."""
         instructions = get_feeding_instructions(
-            species=PetSpecies.BEARDED_DRAGON,
-            life_stage=LifeStage.JUVENILE,
-            task_subtype="insects"
+            species=PetSpecies.BEARDED_DRAGON, life_stage=LifeStage.JUVENILE, task_subtype="insects"
         )
 
         assert "medium" in instructions.lower() or "1/2" in instructions
@@ -44,9 +40,7 @@ class TestFeedingInstructions:
     def test_adult_bearded_dragon_greens_feeding(self):
         """Adult bearded dragons need daily greens."""
         instructions = get_feeding_instructions(
-            species=PetSpecies.BEARDED_DRAGON,
-            life_stage=LifeStage.ADULT,
-            task_subtype="greens"
+            species=PetSpecies.BEARDED_DRAGON, life_stage=LifeStage.ADULT, task_subtype="greens"
         )
 
         assert "collard" in instructions.lower() or "dandelion" in instructions.lower()
@@ -57,9 +51,7 @@ class TestFeedingInstructions:
     def test_feeding_instructions_are_kid_friendly(self):
         """Instructions should be easy for 11-13 year olds to follow."""
         instructions = get_feeding_instructions(
-            species=PetSpecies.BEARDED_DRAGON,
-            life_stage=LifeStage.ADULT,
-            task_subtype="insects"
+            species=PetSpecies.BEARDED_DRAGON, life_stage=LifeStage.ADULT, task_subtype="insects"
         )
 
         # Should have numbered steps or clear structure
@@ -73,10 +65,7 @@ class TestWaterInstructions:
 
     def test_bearded_dragon_water_change(self):
         """Water change instructions should be specific."""
-        instructions = get_water_instructions(
-            species=PetSpecies.BEARDED_DRAGON,
-            life_stage=LifeStage.ADULT
-        )
+        instructions = get_water_instructions(species=PetSpecies.BEARDED_DRAGON, life_stage=LifeStage.ADULT)
 
         assert "empty" in instructions.lower() or "dump" in instructions.lower()
         assert "fresh" in instructions.lower()
@@ -84,10 +73,7 @@ class TestWaterInstructions:
 
     def test_water_instructions_mention_water_type(self):
         """Should specify what kind of water to use."""
-        instructions = get_water_instructions(
-            species=PetSpecies.BEARDED_DRAGON,
-            life_stage=LifeStage.ADULT
-        )
+        instructions = get_water_instructions(species=PetSpecies.BEARDED_DRAGON, life_stage=LifeStage.ADULT)
 
         # Should mention filtered or dechlorinated water
         water_types = ["filtered", "dechlorinated", "bottled", "tap"]
@@ -100,9 +86,7 @@ class TestCleaningInstructions:
     def test_spot_cleaning_instructions(self):
         """Spot cleaning should have specific instructions."""
         instructions = get_cleaning_instructions(
-            species=PetSpecies.BEARDED_DRAGON,
-            life_stage=LifeStage.ADULT,
-            task_subtype="spot_clean"
+            species=PetSpecies.BEARDED_DRAGON, life_stage=LifeStage.ADULT, task_subtype="spot_clean"
         )
 
         assert "food" in instructions.lower()  # Remove uneaten food
@@ -112,9 +96,7 @@ class TestCleaningInstructions:
     def test_deep_cleaning_instructions(self):
         """Deep cleaning should be more thorough and include poop removal."""
         instructions = get_cleaning_instructions(
-            species=PetSpecies.BEARDED_DRAGON,
-            life_stage=LifeStage.ADULT,
-            task_subtype="deep_clean"
+            species=PetSpecies.BEARDED_DRAGON, life_stage=LifeStage.ADULT, task_subtype="deep_clean"
         )
 
         assert "poop" in instructions.lower()  # Poop removal is part of weekly deep clean
@@ -129,9 +111,7 @@ class TestDustingInstructions:
     def test_calcium_dusting_instructions(self):
         """Calcium dusting should have clear instructions."""
         instructions = get_dusting_instructions(
-            species=PetSpecies.BEARDED_DRAGON,
-            life_stage=LifeStage.ADULT,
-            task_subtype="calcium"
+            species=PetSpecies.BEARDED_DRAGON, life_stage=LifeStage.ADULT, task_subtype="calcium"
         )
 
         assert "calcium" in instructions.lower()
@@ -141,9 +121,7 @@ class TestDustingInstructions:
     def test_multivitamin_dusting_instructions(self):
         """Multivitamin dusting instructions."""
         instructions = get_dusting_instructions(
-            species=PetSpecies.BEARDED_DRAGON,
-            life_stage=LifeStage.ADULT,
-            task_subtype="multivitamin"
+            species=PetSpecies.BEARDED_DRAGON, life_stage=LifeStage.ADULT, task_subtype="multivitamin"
         )
 
         assert "vitamin" in instructions.lower() or "multivitamin" in instructions.lower()
@@ -159,7 +137,7 @@ class TestGetTaskDescription:
             task_type=CareTaskType.FEEDING,
             species=PetSpecies.BEARDED_DRAGON,
             life_stage=LifeStage.ADULT,
-            task_name="Morning Feeding"
+            task_name="Morning Feeding",
         )
 
         assert description is not None
@@ -171,7 +149,7 @@ class TestGetTaskDescription:
             task_type=CareTaskType.WATER,
             species=PetSpecies.BEARDED_DRAGON,
             life_stage=LifeStage.ADULT,
-            task_name="Change Water"
+            task_name="Change Water",
         )
 
         assert description is not None
@@ -183,7 +161,7 @@ class TestGetTaskDescription:
             task_type=CareTaskType.CLEANING,
             species=PetSpecies.BEARDED_DRAGON,
             life_stage=LifeStage.ADULT,
-            task_name="Spot Clean Tank"
+            task_name="Spot Clean Tank",
         )
 
         assert description is not None
@@ -192,10 +170,7 @@ class TestGetTaskDescription:
     def test_unknown_species_returns_generic(self):
         """Unknown species should return generic but helpful instructions."""
         description = get_task_description(
-            task_type=CareTaskType.FEEDING,
-            species="unknown_pet",
-            life_stage=LifeStage.ADULT,
-            task_name="Feed Pet"
+            task_type=CareTaskType.FEEDING, species="unknown_pet", life_stage=LifeStage.ADULT, task_name="Feed Pet"
         )
 
         assert description is not None
@@ -211,7 +186,7 @@ class TestTaskTypeDetection:
             task_type=CareTaskType.FEEDING,
             species=PetSpecies.BEARDED_DRAGON,
             life_stage=LifeStage.ADULT,
-            task_name="Feed Dubia Roaches"
+            task_name="Feed Dubia Roaches",
         )
 
         assert "roach" in description.lower() or "dubia" in description.lower()
@@ -222,7 +197,7 @@ class TestTaskTypeDetection:
             task_type=CareTaskType.FEEDING,
             species=PetSpecies.BEARDED_DRAGON,
             life_stage=LifeStage.ADULT,
-            task_name="Feed Greens/Salad"
+            task_name="Feed Greens/Salad",
         )
 
         assert "green" in description.lower() or "salad" in description.lower() or "vegetable" in description.lower()
@@ -233,7 +208,7 @@ class TestTaskTypeDetection:
             task_type=CareTaskType.CLEANING,
             species=PetSpecies.BEARDED_DRAGON,
             life_stage=LifeStage.ADULT,
-            task_name="Daily Spot Clean"
+            task_name="Daily Spot Clean",
         )
 
         assert "food" in description.lower()  # Remove uneaten food

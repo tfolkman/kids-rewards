@@ -8,11 +8,10 @@ This module provides:
 - Task generation for care schedules
 """
 
-from datetime import datetime, timedelta, time
+from datetime import datetime, time, timedelta
 from typing import Optional
 
 import models
-
 
 BEARDED_DRAGON_CARE = {
     models.BeardedDragonLifeStage.BABY: {
@@ -92,9 +91,7 @@ def calculate_age_months(birthday: datetime, reference_date: Optional[datetime] 
     return max(0, months)
 
 
-def calculate_life_stage(
-    species: models.PetSpecies, age_months: int
-) -> models.BeardedDragonLifeStage:
+def calculate_life_stage(species: models.PetSpecies, age_months: int) -> models.BeardedDragonLifeStage:
     """
     Calculate life stage based on species and age.
 

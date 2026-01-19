@@ -257,10 +257,10 @@ class PetSpecies(str, Enum):
 
 
 class BeardedDragonLifeStage(str, Enum):
-    BABY = "baby"           # 0-3 months
-    JUVENILE = "juvenile"   # 3-12 months
-    SUB_ADULT = "sub_adult" # 12-17 months
-    ADULT = "adult"         # 18+ months
+    BABY = "baby"  # 0-3 months
+    JUVENILE = "juvenile"  # 3-12 months
+    SUB_ADULT = "sub_adult"  # 12-17 months
+    ADULT = "adult"  # 18+ months
 
 
 class PetCareTaskStatus(str, Enum):

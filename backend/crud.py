@@ -1662,9 +1662,7 @@ def deactivate_pet(pet_id: str, parent_id: str) -> Optional[models.Pet]:
 # --- Pet Care Schedule CRUD ---
 
 
-def create_pet_care_schedule(
-    schedule_in: models.PetCareScheduleCreate, parent_id: str
-) -> models.PetCareSchedule:
+def create_pet_care_schedule(schedule_in: models.PetCareScheduleCreate, parent_id: str) -> models.PetCareSchedule:
     pet = get_pet_by_id(schedule_in.pet_id)
     if not pet or not pet.is_active:
         raise HTTPException(status_code=404, detail="Active pet not found.")
@@ -1963,9 +1961,7 @@ def submit_pet_care_task(
         raise HTTPException(status_code=403, detail="Not authorized to submit this task.")
 
     if task.status != models.PetCareTaskStatus.ASSIGNED:
-        raise HTTPException(
-            status_code=400, detail=f"Task is not in assigned status. Current status: {task.status}"
-        )
+        raise HTTPException(status_code=400, detail=f"Task is not in assigned status. Current status: {task.status}")
 
     submitted_at_ts = datetime.utcnow()
     try:
@@ -2009,9 +2005,7 @@ def update_pet_care_task_status(
         raise HTTPException(status_code=404, detail="Task not found.")
 
     if task.status != models.PetCareTaskStatus.PENDING_APPROVAL:
-        raise HTTPException(
-            status_code=400, detail=f"Task is not pending approval. Current status: {task.status}"
-        )
+        raise HTTPException(status_code=400, detail=f"Task is not pending approval. Current status: {task.status}")
 
     pet = get_pet_by_id(task.pet_id)
     if not pet or pet.parent_id != parent_user.id:
@@ -2046,9 +2040,7 @@ def update_pet_care_task_status(
 # --- Pet Health Log CRUD ---
 
 
-def create_pet_health_log(
-    log_in: models.PetHealthLogCreate, user: models.User
-) -> models.PetHealthLog:
+def create_pet_health_log(log_in: models.PetHealthLogCreate, user: models.User) -> models.PetHealthLog:
     import pet_care
 
     pet = get_pet_by_id(log_in.pet_id)
@@ -2106,7 +2098,7 @@ def get_health_logs_by_pet_id(pet_id: str) -> List[models.PetHealthLog]:  # noqa
         if e.response["Error"]["Code"] == "ResourceNotFoundException":
             print("Warning: GSI 'PetHealthLogsIndex' not found. Falling back to scan.")
             all_logs = get_all_health_logs_scan_fallback()
-            return sorted([l for l in all_logs if l.pet_id == pet_id], key=lambda x: x.logged_at, reverse=True)
+            return sorted([log for log in all_logs if log.pet_id == pet_id], key=lambda x: x.logged_at, reverse=True)
         print(f"Error getting health logs for pet {pet_id}: {e}")
         return []
 

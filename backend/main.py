@@ -1054,7 +1054,9 @@ async def get_recommended_schedules(
         models.RecommendedCareSchedule(
             task_name=s["task_name"],
             task_type=s["task_type"].value,
-            frequency=models.CareFrequency(s["frequency"]) if s["frequency"] in ["daily", "weekly"] else models.CareFrequency.DAILY,
+            frequency=models.CareFrequency(s["frequency"])
+            if s["frequency"] in ["daily", "weekly"]
+            else models.CareFrequency.DAILY,
             points_value=s["points_value"],
             description=s["description"],
         )
@@ -1071,9 +1073,7 @@ async def update_pet(
     """Update a pet. Only the parent who created the pet can update it."""
     updated_pet = crud.update_pet(pet_id=pet_id, pet_in=pet_in, parent_id=current_parent.id)
     if not updated_pet:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found or not authorized to update."
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found or not authorized to update.")
     return pet_care.get_pet_with_age(updated_pet)
 
 
@@ -1150,7 +1150,9 @@ async def generate_pet_care_tasks(
 
     # Get existing task dates to avoid duplicates
     existing_tasks = crud.get_tasks_by_pet_id(pet.id)
-    existing_task_dates = {task.due_date.date().isoformat() for task in existing_tasks if task.schedule_id == schedule_id}
+    existing_task_dates = {
+        task.due_date.date().isoformat() for task in existing_tasks if task.schedule_id == schedule_id
+    }
 
     # Generate tasks
     task_creates = pet_care.generate_tasks_for_schedule(
@@ -1202,9 +1204,7 @@ async def submit_pet_care_task(
     """Kid submits completion of a pet care task."""
     task = crud.submit_pet_care_task(task_id=task_id, kid_user=current_kid, notes=submission.notes)
     if not task:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not submit pet care task."
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not submit pet care task.")
     return task
 
 
@@ -1254,9 +1254,7 @@ async def reject_pet_care_task_submission(
         parent_user=current_parent,
     )
     if not rejected_task:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to reject pet care task."
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to reject pet care task.")
     return rejected_task
 
 
@@ -1304,12 +1302,14 @@ async def get_pet_care_overview(
         pending_count = sum(1 for t in tasks if t.status == models.PetCareTaskStatus.ASSIGNED)
         awaiting_approval = sum(1 for t in tasks if t.status == models.PetCareTaskStatus.PENDING_APPROVAL)
 
-        overview.append({
-            "pet": pet_with_age.model_dump(),
-            "care_recommendations": care_rec.model_dump(),
-            "latest_weight": latest_weight.model_dump() if latest_weight else None,
-            "pending_tasks": pending_count,
-            "awaiting_approval": awaiting_approval,
-        })
+        overview.append(
+            {
+                "pet": pet_with_age.model_dump(),
+                "care_recommendations": care_rec.model_dump(),
+                "latest_weight": latest_weight.model_dump() if latest_weight else None,
+                "pending_tasks": pending_count,
+                "awaiting_approval": awaiting_approval,
+            }
+        )
 
     return {"pets": overview}
