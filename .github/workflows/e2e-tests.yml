@@ -189,44 +189,37 @@ jobs:
       run: |
         cd backend
         python << 'SEED_SCRIPT'
-        import os
-        os.environ['DYNAMODB_ENDPOINT_OVERRIDE'] = 'http://localhost:8000'
-        os.environ['USERS_TABLE_NAME'] = 'KidsRewardsUsers'
-        os.environ['STORE_ITEMS_TABLE_NAME'] = 'KidsRewardsStoreItems'
-        os.environ['CHORES_TABLE_NAME'] = 'KidsRewardsChores'
-        os.environ['CHORE_LOGS_TABLE_NAME'] = 'KidsRewardsChoreLogs'
-        os.environ['REQUESTS_TABLE_NAME'] = 'KidsRewardsRequests'
-        os.environ['PURCHASE_LOGS_TABLE_NAME'] = 'KidsRewardsPurchaseLogs'
-        os.environ['CHORE_ASSIGNMENTS_TABLE_NAME'] = 'KidsRewardsChoreAssignments'
-        os.environ['PETS_TABLE_NAME'] = 'KidsRewardsPets'
-        os.environ['PET_CARE_SCHEDULES_TABLE_NAME'] = 'KidsRewardsPetCareSchedules'
-        os.environ['PET_CARE_TASKS_TABLE_NAME'] = 'KidsRewardsPetCareTasks'
-        os.environ['PET_HEALTH_LOGS_TABLE_NAME'] = 'KidsRewardsPetHealthLogs'
-        os.environ['APP_SECRET_KEY'] = 'test-secret-key-for-ci-environment-32chars'
-
-        import crud
-        import security
+        import boto3
+        from passlib.context import CryptContext
         from datetime import datetime
         import uuid
+
+        # Connect directly to local DynamoDB
+        dynamodb = boto3.resource('dynamodb', endpoint_url='http://localhost:8000', region_name='us-east-1')
+        users_table = dynamodb.Table('KidsRewardsUsers')
+        chores_table = dynamodb.Table('KidsRewardsChores')
+
+        # Password hashing
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
         # Create test users directly in database
         parent_data = {
             'id': 'testparent',
             'username': 'testparent',
-            'hashed_password': security.get_password_hash('password456'),
+            'hashed_password': pwd_context.hash('password456'),
             'role': 'parent',
             'points': 0
         }
-        crud.users_table.put_item(Item=parent_data)
+        users_table.put_item(Item=parent_data)
 
         kid_data = {
             'id': 'testkid',
             'username': 'testkid',
-            'hashed_password': security.get_password_hash('password123'),
+            'hashed_password': pwd_context.hash('password123'),
             'role': 'kid',
             'points': 100
         }
-        crud.users_table.put_item(Item=kid_data)
+        users_table.put_item(Item=kid_data)
         print('Test users created')
 
         # Create some test chores
@@ -240,7 +233,7 @@ jobs:
             'updated_at': datetime.utcnow().isoformat(),
             'is_active': 'true'
         }
-        crud.chores_table.put_item(Item=chore1)
+        chores_table.put_item(Item=chore1)
 
         chore2 = {
             'id': str(uuid.uuid4()),
@@ -252,7 +245,7 @@ jobs:
             'updated_at': datetime.utcnow().isoformat(),
             'is_active': 'true'
         }
-        crud.chores_table.put_item(Item=chore2)
+        chores_table.put_item(Item=chore2)
         print('Test chores created')
         SEED_SCRIPT
 
