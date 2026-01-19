@@ -177,6 +177,13 @@ jobs:
           --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
           --endpoint-url http://localhost:8000 || true
 
+    # Wait for DynamoDB tables to be ready
+    - name: Wait for DynamoDB
+      run: |
+        echo "Waiting for DynamoDB tables..."
+        sleep 5
+        aws dynamodb list-tables --endpoint-url http://localhost:8000
+
     # Seed test data
     - name: Seed test data
       run: |
@@ -187,6 +194,14 @@ jobs:
         os.environ['USERS_TABLE_NAME'] = 'KidsRewardsUsers'
         os.environ['STORE_ITEMS_TABLE_NAME'] = 'KidsRewardsStoreItems'
         os.environ['CHORES_TABLE_NAME'] = 'KidsRewardsChores'
+        os.environ['CHORE_LOGS_TABLE_NAME'] = 'KidsRewardsChoreLogs'
+        os.environ['REQUESTS_TABLE_NAME'] = 'KidsRewardsRequests'
+        os.environ['PURCHASE_LOGS_TABLE_NAME'] = 'KidsRewardsPurchaseLogs'
+        os.environ['CHORE_ASSIGNMENTS_TABLE_NAME'] = 'KidsRewardsChoreAssignments'
+        os.environ['PETS_TABLE_NAME'] = 'KidsRewardsPets'
+        os.environ['PET_CARE_SCHEDULES_TABLE_NAME'] = 'KidsRewardsPetCareSchedules'
+        os.environ['PET_CARE_TASKS_TABLE_NAME'] = 'KidsRewardsPetCareTasks'
+        os.environ['PET_HEALTH_LOGS_TABLE_NAME'] = 'KidsRewardsPetHealthLogs'
         os.environ['APP_SECRET_KEY'] = 'test-secret-key-for-ci-environment-32chars'
 
         import crud
