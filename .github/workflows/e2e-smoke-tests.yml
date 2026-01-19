@@ -73,8 +73,10 @@ jobs:
 import subprocess
 import time
 
-tables = ['KidsRewardsUsers', 'KidsRewardsStoreItems', 'KidsRewardsPurchaseLogs', 
-          'KidsRewardsChores', 'KidsRewardsChoreLogs', 'KidsRewardsRequests']
+tables = ['KidsRewardsUsers', 'KidsRewardsStoreItems', 'KidsRewardsPurchaseLogs',
+          'KidsRewardsChores', 'KidsRewardsChoreLogs', 'KidsRewardsRequests',
+          'KidsRewardsChoreAssignments', 'KidsRewardsPets', 'KidsRewardsPetCareSchedules',
+          'KidsRewardsPetCareTasks', 'KidsRewardsPetHealthLogs']
 
 for table in tables:
     # Simplified table creation - just the minimum needed for tests
@@ -97,6 +99,11 @@ print('Tables created')
             "CHORES_TABLE_NAME": "KidsRewardsChores",
             "CHORE_LOGS_TABLE_NAME": "KidsRewardsChoreLogs",
             "REQUESTS_TABLE_NAME": "KidsRewardsRequests",
+            "CHORE_ASSIGNMENTS_TABLE_NAME": "KidsRewardsChoreAssignments",
+            "PETS_TABLE_NAME": "KidsRewardsPets",
+            "PET_CARE_SCHEDULES_TABLE_NAME": "KidsRewardsPetCareSchedules",
+            "PET_CARE_TASKS_TABLE_NAME": "KidsRewardsPetCareTasks",
+            "PET_HEALTH_LOGS_TABLE_NAME": "KidsRewardsPetHealthLogs",
             "APP_SECRET_KEY": "test-secret-key-32chars-minimum!"
           }
         }

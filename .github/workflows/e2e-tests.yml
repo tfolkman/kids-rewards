@@ -24,11 +24,6 @@ jobs:
         image: amazon/dynamodb-local:latest
         ports:
           - 8000:8000
-        options: >-
-          --health-cmd "curl -f http://localhost:8000 || exit 1"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
 
     steps:
     - name: Checkout code
@@ -146,6 +141,41 @@ jobs:
             '[{"IndexName": "RequesterIdCreatedAtGSI","KeySchema": [{"AttributeName":"requester_id","KeyType":"HASH"}, {"AttributeName":"created_at","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"},"ProvisionedThroughput":{"ReadCapacityUnits":2,"WriteCapacityUnits":2}},{"IndexName": "StatusCreatedAtGSI","KeySchema": [{"AttributeName":"status","KeyType":"HASH"}, {"AttributeName":"created_at","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"},"ProvisionedThroughput":{"ReadCapacityUnits":2,"WriteCapacityUnits":2}}]' \
           --endpoint-url http://localhost:8000 || true
 
+        aws dynamodb create-table \
+          --table-name KidsRewardsChoreAssignments \
+          --attribute-definitions AttributeName=id,AttributeType=S \
+          --key-schema AttributeName=id,KeyType=HASH \
+          --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+          --endpoint-url http://localhost:8000 || true
+
+        aws dynamodb create-table \
+          --table-name KidsRewardsPets \
+          --attribute-definitions AttributeName=id,AttributeType=S \
+          --key-schema AttributeName=id,KeyType=HASH \
+          --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+          --endpoint-url http://localhost:8000 || true
+
+        aws dynamodb create-table \
+          --table-name KidsRewardsPetCareSchedules \
+          --attribute-definitions AttributeName=id,AttributeType=S \
+          --key-schema AttributeName=id,KeyType=HASH \
+          --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+          --endpoint-url http://localhost:8000 || true
+
+        aws dynamodb create-table \
+          --table-name KidsRewardsPetCareTasks \
+          --attribute-definitions AttributeName=id,AttributeType=S \
+          --key-schema AttributeName=id,KeyType=HASH \
+          --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+          --endpoint-url http://localhost:8000 || true
+
+        aws dynamodb create-table \
+          --table-name KidsRewardsPetHealthLogs \
+          --attribute-definitions AttributeName=id,AttributeType=S \
+          --key-schema AttributeName=id,KeyType=HASH \
+          --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+          --endpoint-url http://localhost:8000 || true
+
     # Seed test data
     - name: Seed test data
       run: |
@@ -213,6 +243,11 @@ if testparent:
             "CHORES_TABLE_NAME": "KidsRewardsChores",
             "CHORE_LOGS_TABLE_NAME": "KidsRewardsChoreLogs",
             "REQUESTS_TABLE_NAME": "KidsRewardsRequests",
+            "CHORE_ASSIGNMENTS_TABLE_NAME": "KidsRewardsChoreAssignments",
+            "PETS_TABLE_NAME": "KidsRewardsPets",
+            "PET_CARE_SCHEDULES_TABLE_NAME": "KidsRewardsPetCareSchedules",
+            "PET_CARE_TASKS_TABLE_NAME": "KidsRewardsPetCareTasks",
+            "PET_HEALTH_LOGS_TABLE_NAME": "KidsRewardsPetHealthLogs",
             "APP_SECRET_KEY": "test-secret-key-for-ci-environment-32chars"
           }
         }
