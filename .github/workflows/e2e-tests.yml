@@ -194,8 +194,8 @@ jobs:
         import uuid
 
         # Create test users
-        testparent = crud.create_user('testparent', security.hash_password('password456'), 'parent')
-        testkid = crud.create_user('testkid', security.hash_password('password123'), 'kid')
+        testparent = crud.create_user('testparent', security.get_password_hash('password456'), 'parent')
+        testkid = crud.create_user('testkid', security.get_password_hash('password123'), 'kid')
         print('Test users created')
 
         # Create some test chores
