@@ -278,6 +278,7 @@ jobs:
         sam local start-api -t template.yaml \
           --env-vars local-env.json \
           --warm-containers LAZY \
+          --docker-network host \
           --parameter-overrides "AppImageUri=kidsrewardslambdafunction:latest TableNamePrefix=local- LocalDynamoDBEndpoint=http://localhost:8000" \
           > backend.log 2>&1 &
         # Wait for backend to be ready
