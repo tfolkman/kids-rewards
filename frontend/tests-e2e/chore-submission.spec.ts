@@ -4,24 +4,24 @@ test.describe('Chore Submission Flow', () => {
   // Helper function to login
   async function loginAsKid(page) {
     await page.goto('/');
-    
+
     // Wait for the login page to load
     await page.waitForLoadState('networkidle');
-    
-    // Fill in login form - wait for fields to be visible first
-    const usernameInput = page.locator('input[name="username"]');
+
+    // Fill in login form - use placeholder selectors (Mantine components don't use name attributes)
+    const usernameInput = page.locator('input[placeholder="Your username"]');
     await usernameInput.waitFor({ state: 'visible', timeout: 5000 });
     await usernameInput.fill('testkid');
-    
-    const passwordInput = page.locator('input[name="password"]');
+
+    const passwordInput = page.locator('input[placeholder="Your password"]');
     await passwordInput.fill('password123');
-    
+
     // Click login button
     await page.click('button[type="submit"]');
-    
+
     // Wait for navigation - more flexible waiting
     await page.waitForURL((url) => url.pathname.includes('/dashboard') || url.pathname === '/', { timeout: 10000 });
-    
+
     // Verify we're logged in - look for user-specific content
     const welcomeText = page.locator('text=/Welcome|Dashboard|Available Chores|My Chores/i');
     await expect(welcomeText.first()).toBeVisible({ timeout: 5000 });
