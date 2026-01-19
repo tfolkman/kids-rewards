@@ -249,6 +249,166 @@ class ChoreAssignmentSubmission(BaseModel):
     # assignment_id and kid_id will be from the URL path and authenticated user
 
 
+# --- Pet Care Module Models ---
+
+
+class PetSpecies(str, Enum):
+    BEARDED_DRAGON = "bearded_dragon"
+
+
+class BeardedDragonLifeStage(str, Enum):
+    BABY = "baby"  # 0-3 months
+    JUVENILE = "juvenile"  # 3-12 months
+    SUB_ADULT = "sub_adult"  # 12-17 months
+    ADULT = "adult"  # 18+ months
+
+
+class PetCareTaskStatus(str, Enum):
+    SCHEDULED = "scheduled"
+    ASSIGNED = "assigned"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    SKIPPED = "skipped"
+
+
+class CareFrequency(str, Enum):
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
+
+class WeightStatus(str, Enum):
+    HEALTHY = "healthy"
+    UNDERWEIGHT = "underweight"
+    OVERWEIGHT = "overweight"
+
+
+class PetBase(BaseModel):
+    name: str
+    species: PetSpecies
+    birthday: datetime
+    photo_url: Optional[str] = None
+    care_notes: Optional[str] = None
+
+
+class PetCreate(PetBase):
+    pass
+
+
+class Pet(PetBase):
+    id: str
+    parent_id: str
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        from_attributes = True
+
+
+class PetWithAge(Pet):
+    age_months: int
+    life_stage: BeardedDragonLifeStage
+
+
+class PetCareScheduleBase(BaseModel):
+    pet_id: str
+    task_name: str
+    description: Optional[str] = None
+    frequency: CareFrequency
+    points_value: int = Field(gt=0)
+    day_of_week: Optional[int] = None  # 0=Monday, 6=Sunday (for weekly tasks)
+    due_by_time: Optional[str] = None  # "HH:MM" format, e.g., "10:00"
+
+
+class PetCareScheduleCreate(PetCareScheduleBase):
+    assigned_kid_ids: list[str]  # List of kid usernames for rotation
+
+
+class PetCareSchedule(PetCareScheduleBase):
+    id: str
+    parent_id: str
+    assigned_kid_ids: list[str]
+    rotation_index: int = 0  # Current position in rotation
+    is_active: bool = True
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+    class Config:
+        from_attributes = True
+
+
+class PetCareTaskBase(BaseModel):
+    schedule_id: str
+    pet_id: str
+    pet_name: str
+    task_name: str
+    description: Optional[str] = None
+    points_value: int
+    assigned_to_kid_id: str
+    assigned_to_kid_username: str
+    due_date: datetime
+
+
+class PetCareTaskCreate(PetCareTaskBase):
+    pass
+
+
+class PetCareTask(PetCareTaskBase):
+    id: str
+    status: PetCareTaskStatus = PetCareTaskStatus.ASSIGNED
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    submitted_at: Optional[datetime] = None
+    submission_notes: Optional[str] = None
+    reviewed_by_parent_id: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+
+class PetCareTaskSubmission(BaseModel):
+    notes: Optional[str] = None
+
+
+class PetHealthLogBase(BaseModel):
+    pet_id: str
+    weight_grams: int = Field(gt=0)
+    notes: Optional[str] = None
+
+
+class PetHealthLogCreate(PetHealthLogBase):
+    pass
+
+
+class PetHealthLog(PetHealthLogBase):
+    id: str
+    logged_by_user_id: str
+    logged_by_username: str
+    logged_at: datetime = Field(default_factory=datetime.utcnow)
+    weight_status: Optional[WeightStatus] = None
+    life_stage_at_log: Optional[BeardedDragonLifeStage] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CareRecommendation(BaseModel):
+    life_stage: BeardedDragonLifeStage
+    feeding_frequency: str
+    diet_ratio: str
+    healthy_weight_range_grams: tuple[int, int]
+    care_tips: list[str]
+
+
+class RecommendedCareSchedule(BaseModel):
+    task_name: str
+    task_type: str
+    frequency: CareFrequency
+    points_value: int
+    description: str
+
+
 class ChoreAssignmentApprovalRequest(BaseModel):
     assignment_id: str
     approve: bool  # True to approve, False to reject

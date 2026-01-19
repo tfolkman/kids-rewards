@@ -293,4 +293,177 @@ export const rejectFeatureRequest = (requestId: string) => apiClient.post<Featur
 // Gemini API
 export const askGemini = (prompt: string, question: string) => apiClient.post<{ answer: string }>('/gemini/ask', { prompt, question });
 
+// --- Pet Care Types ---
+
+export type PetSpecies = "bearded_dragon";
+export type BeardedDragonLifeStage = "baby" | "juvenile" | "sub_adult" | "adult";
+export type PetCareTaskStatus = "scheduled" | "assigned" | "pending_approval" | "approved" | "rejected" | "skipped";
+export type CareFrequency = "daily" | "weekly";
+export type WeightStatus = "healthy" | "underweight" | "overweight";
+
+export interface Pet {
+  id: string;
+  parent_id: string;
+  name: string;
+  species: PetSpecies;
+  birthday: string; // ISO date string
+  photo_url?: string;
+  care_notes?: string;
+  is_active: boolean;
+  created_at: string; // ISO date string
+  updated_at: string; // ISO date string
+}
+
+export interface PetWithAge extends Pet {
+  age_months: number;
+  life_stage: BeardedDragonLifeStage;
+}
+
+export interface PetCreate {
+  name: string;
+  species: PetSpecies;
+  birthday: string; // ISO date string
+  photo_url?: string;
+  care_notes?: string;
+}
+
+export interface CareRecommendation {
+  life_stage: BeardedDragonLifeStage;
+  feeding_frequency: string;
+  diet_ratio: string;
+  healthy_weight_range_grams: [number, number];
+  care_tips: string[];
+}
+
+export interface PetCareSchedule {
+  id: string;
+  pet_id: string;
+  parent_id: string;
+  task_name: string;
+  description?: string;
+  frequency: CareFrequency;
+  points_value: number;
+  day_of_week?: number; // 0=Monday, 6=Sunday
+  due_by_time?: string; // "HH:MM" format, e.g., "10:00"
+  assigned_kid_ids: string[];
+  rotation_index: number;
+  is_active: boolean;
+  created_at: string; // ISO date string
+  updated_at: string; // ISO date string
+}
+
+export interface PetCareScheduleCreate {
+  pet_id: string;
+  task_name: string;
+  description?: string;
+  frequency: CareFrequency;
+  points_value: number;
+  day_of_week?: number;
+  due_by_time?: string; // "HH:MM" format, e.g., "10:00"
+  assigned_kid_ids: string[];
+}
+
+export interface PetCareTask {
+  id: string;
+  schedule_id: string;
+  pet_id: string;
+  pet_name: string;
+  task_name: string;
+  description?: string;
+  points_value: number;
+  assigned_to_kid_id: string;
+  assigned_to_kid_username: string;
+  due_date: string; // ISO date string
+  status: PetCareTaskStatus;
+  created_at: string; // ISO date string
+  submitted_at?: string; // ISO date string
+  submission_notes?: string;
+  reviewed_by_parent_id?: string;
+  reviewed_at?: string; // ISO date string
+}
+
+export interface PetCareTaskSubmission {
+  notes?: string;
+}
+
+export interface PetHealthLog {
+  id: string;
+  pet_id: string;
+  weight_grams: number;
+  notes?: string;
+  logged_by_user_id: string;
+  logged_by_username: string;
+  logged_at: string; // ISO date string
+  weight_status?: WeightStatus;
+  life_stage_at_log?: BeardedDragonLifeStage;
+}
+
+export interface PetHealthLogCreate {
+  pet_id: string;
+  weight_grams: number;
+  notes?: string;
+}
+
+export interface PetCareTaskActionRequest {
+  task_id: string;
+}
+
+export interface PetOverviewItem {
+  pet: PetWithAge;
+  care_recommendations: CareRecommendation;
+  latest_weight: PetHealthLog | null;
+  pending_tasks: number;
+  awaiting_approval: number;
+}
+
+export interface PetCareOverview {
+  pets: PetOverviewItem[];
+}
+
+export interface RecommendedCareSchedule {
+  task_name: string;
+  task_type: string;
+  frequency: CareFrequency;
+  points_value: number;
+  description: string;
+}
+
+// --- Pet Care API Functions ---
+
+// Pets
+export const createPet = (data: PetCreate) => apiClient.post<PetWithAge>('/pets/', data);
+export const getPets = () => apiClient.get<PetWithAge[]>('/pets/');
+export const getPetById = (petId: string) => apiClient.get<PetWithAge>(`/pets/${petId}`);
+export const updatePet = (petId: string, data: PetCreate) => apiClient.put<PetWithAge>(`/pets/${petId}`, data);
+export const deactivatePet = (petId: string) => apiClient.post<PetWithAge>(`/pets/${petId}/deactivate`);
+export const getPetCareRecommendations = (petId: string) => apiClient.get<CareRecommendation>(`/pets/${petId}/care-recommendations`);
+export const getRecommendedSchedules = (petId: string) => apiClient.get<RecommendedCareSchedule[]>(`/pets/${petId}/recommended-schedules`);
+export const getPetCareOverview = () => apiClient.get<PetCareOverview>('/pets/overview/');
+
+// Pet Care Schedules
+export const createPetCareSchedule = (data: PetCareScheduleCreate) => apiClient.post<PetCareSchedule>('/pets/schedules/', data);
+export const getPetSchedules = (petId: string) => apiClient.get<PetCareSchedule[]>(`/pets/${petId}/schedules/`);
+export const deactivatePetCareSchedule = (scheduleId: string) => apiClient.post<PetCareSchedule>(`/pets/schedules/${scheduleId}/deactivate`);
+export const generatePetCareTasks = (scheduleId: string, daysAhead: number = 7) =>
+  apiClient.post<PetCareTask[]>(`/pets/schedules/${scheduleId}/generate-tasks?days_ahead=${daysAhead}`);
+
+// Pet Care Tasks
+export const getMyPetTasks = () => apiClient.get<PetCareTask[]>('/kids/my-pet-tasks/');
+export const getPetTasks = (petId: string) => apiClient.get<PetCareTask[]>(`/pets/${petId}/tasks/`);
+export const submitPetCareTask = (taskId: string, data: PetCareTaskSubmission) =>
+  apiClient.post<PetCareTask>(`/pets/tasks/${taskId}/submit`, data);
+export const getPendingPetTaskSubmissions = () => apiClient.get<PetCareTask[]>('/parent/pet-task-submissions/pending');
+export const approvePetCareTask = (data: PetCareTaskActionRequest) =>
+  apiClient.post<PetCareTask>('/parent/pet-task-submissions/approve', data);
+export const rejectPetCareTask = (data: PetCareTaskActionRequest) =>
+  apiClient.post<PetCareTask>('/parent/pet-task-submissions/reject', data);
+
+// Pet Health Logs
+export const createPetHealthLog = (petId: string, data: PetHealthLogCreate) =>
+  apiClient.post<PetHealthLog>(`/pets/${petId}/health-logs/`, data);
+export const getPetHealthLogs = (petId: string) => apiClient.get<PetHealthLog[]>(`/pets/${petId}/health-logs/`);
+
+// Kids Streak
+export const getMyStreak = () => apiClient.get<{ current_streak: number; longest_streak: number; last_activity_date: string | null }>('/kids/streak/');
+
 export default apiClient;

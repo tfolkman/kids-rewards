@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm  # noqa: E402
 from mangum import Mangum  # Import Mangum # noqa: E402
 
+import care_guide  # noqa: E402
 import crud  # noqa: E402
 import models  # noqa: E402
 import security  # noqa: E402
@@ -985,3 +986,330 @@ async def get_my_chore_assignments(
     Parent retrieves all chore assignments they have created.
     """
     return crud.get_assignments_by_parent_id(parent_id=current_parent.id)
+
+
+# --- Pet Care Endpoints ---
+
+import pet_care  # noqa: E402
+
+
+# Pet CRUD - Parent only
+@app.post("/pets/", response_model=models.PetWithAge, status_code=status.HTTP_201_CREATED)
+async def create_pet(
+    pet_in: models.PetCreate,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Create a new pet. Only accessible by parents."""
+    pet = crud.create_pet(pet_in=pet_in, parent_id=current_parent.id)
+    return pet_care.get_pet_with_age(pet)
+
+
+@app.get("/pets/", response_model=List[models.PetWithAge])  # noqa: UP006
+async def get_pets(
+    current_user: models.User = Depends(get_current_active_user),  # noqa: B008
+):
+    """Get all active pets. Accessible to all authenticated users."""
+    pets = crud.get_active_pets()
+    return [pet_care.get_pet_with_age(pet) for pet in pets]
+
+
+@app.get("/pets/{pet_id}", response_model=models.PetWithAge)
+async def get_pet(
+    pet_id: str,
+    current_user: models.User = Depends(get_current_active_user),  # noqa: B008
+):
+    """Get a specific pet by ID."""
+    pet = crud.get_pet_by_id(pet_id)
+    if not pet:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found.")
+    return pet_care.get_pet_with_age(pet)
+
+
+@app.get("/pets/{pet_id}/care-recommendations", response_model=models.CareRecommendation)
+async def get_pet_care_recommendations(
+    pet_id: str,
+    current_user: models.User = Depends(get_current_active_user),  # noqa: B008
+):
+    """Get age-appropriate care recommendations for a pet."""
+    pet = crud.get_pet_by_id(pet_id)
+    if not pet:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found.")
+    pet_with_age = pet_care.get_pet_with_age(pet)
+    return pet_care.get_care_recommendations(pet.species, pet_with_age.life_stage)
+
+
+@app.get("/pets/{pet_id}/recommended-schedules", response_model=List[models.RecommendedCareSchedule])  # noqa: UP006
+async def get_recommended_schedules(
+    pet_id: str,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Get recommended care schedules for a pet based on its species and life stage."""
+    pet = crud.get_pet_by_id(pet_id)
+    if not pet:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found.")
+    pet_with_age = pet_care.get_pet_with_age(pet)
+    life_stage = care_guide.LifeStage(pet_with_age.life_stage.value)
+    schedules = care_guide.get_recommended_schedules(pet.species.value, life_stage)
+    return [
+        models.RecommendedCareSchedule(
+            task_name=s["task_name"],
+            task_type=s["task_type"].value,
+            frequency=models.CareFrequency(s["frequency"])
+            if s["frequency"] in ["daily", "weekly"]
+            else models.CareFrequency.DAILY,
+            points_value=s["points_value"],
+            description=s["description"],
+        )
+        for s in schedules
+    ]
+
+
+@app.put("/pets/{pet_id}", response_model=models.PetWithAge)
+async def update_pet(
+    pet_id: str,
+    pet_in: models.PetCreate,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Update a pet. Only the parent who created the pet can update it."""
+    updated_pet = crud.update_pet(pet_id=pet_id, pet_in=pet_in, parent_id=current_parent.id)
+    if not updated_pet:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found or not authorized to update.")
+    return pet_care.get_pet_with_age(updated_pet)
+
+
+@app.post("/pets/{pet_id}/deactivate", response_model=models.PetWithAge)
+async def deactivate_pet(
+    pet_id: str,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Deactivate a pet. Only the parent who created the pet can deactivate it."""
+    deactivated_pet = crud.deactivate_pet(pet_id=pet_id, parent_id=current_parent.id)
+    if not deactivated_pet:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found or not authorized to deactivate."
+        )
+    return pet_care.get_pet_with_age(deactivated_pet)
+
+
+# Pet Care Schedule CRUD - Parent only
+@app.post("/pets/schedules/", response_model=models.PetCareSchedule, status_code=status.HTTP_201_CREATED)
+async def create_pet_care_schedule(
+    schedule_in: models.PetCareScheduleCreate,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Create a new pet care schedule. Only accessible by parents."""
+    return crud.create_pet_care_schedule(schedule_in=schedule_in, parent_id=current_parent.id)
+
+
+@app.get("/pets/{pet_id}/schedules/", response_model=List[models.PetCareSchedule])  # noqa: UP006
+async def get_pet_schedules(
+    pet_id: str,
+    current_user: models.User = Depends(get_current_active_user),  # noqa: B008
+):
+    """Get all care schedules for a pet."""
+    return crud.get_schedules_by_pet_id(pet_id)
+
+
+@app.post("/pets/schedules/{schedule_id}/deactivate", response_model=models.PetCareSchedule)
+async def deactivate_pet_care_schedule(
+    schedule_id: str,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Deactivate a pet care schedule. Only the parent who created it can deactivate."""
+    deactivated_schedule = crud.deactivate_schedule(schedule_id=schedule_id, parent_id=current_parent.id)
+    if not deactivated_schedule:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Schedule not found or not authorized to deactivate."
+        )
+    return deactivated_schedule
+
+
+@app.post("/pets/schedules/{schedule_id}/generate-tasks", response_model=List[models.PetCareTask])  # noqa: UP006
+async def generate_pet_care_tasks(
+    schedule_id: str,
+    days_ahead: int = 7,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Generate pet care tasks from a schedule for the next N days."""
+    schedule = crud.get_schedule_by_id(schedule_id)
+    if not schedule:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Schedule not found.")
+    if schedule.parent_id != current_parent.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized.")
+
+    pet = crud.get_pet_by_id(schedule.pet_id)
+    if not pet:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pet not found.")
+
+    # Get kid usernames for rotation
+    kid_usernames = {}
+    for kid_id in schedule.assigned_kid_ids:
+        user = crud.get_user_by_username(kid_id)
+        if user:
+            kid_usernames[kid_id] = user.username
+
+    # Get existing task dates to avoid duplicates
+    existing_tasks = crud.get_tasks_by_pet_id(pet.id)
+    existing_task_dates = {
+        task.due_date.date().isoformat() for task in existing_tasks if task.schedule_id == schedule_id
+    }
+
+    # Generate tasks
+    task_creates = pet_care.generate_tasks_for_schedule(
+        schedule, pet, kid_usernames, days_ahead=days_ahead, existing_task_dates=existing_task_dates
+    )
+
+    # Create tasks in database
+    created_tasks = []
+    for task_create in task_creates:
+        task = crud.create_pet_care_task(task_create)
+        created_tasks.append(task)
+
+    # Update rotation index
+    if created_tasks:
+        new_index = (schedule.rotation_index + len(created_tasks)) % len(schedule.assigned_kid_ids)
+        crud.update_schedule_rotation_index(schedule_id, new_index)
+
+    return created_tasks
+
+
+# Pet Care Tasks - Kid and Parent
+@app.get("/kids/my-pet-tasks/", response_model=List[models.PetCareTask])  # noqa: UP006
+async def get_my_pet_tasks(
+    current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+):
+    """Kid retrieves their assigned pet care tasks."""
+    return crud.get_tasks_by_kid_id(kid_id=current_kid.username)
+
+
+@app.get("/pets/{pet_id}/tasks/", response_model=List[models.PetCareTask])  # noqa: UP006
+async def get_pet_tasks(
+    pet_id: str,
+    current_user: models.User = Depends(get_current_active_user),  # noqa: B008
+):
+    """Get all care tasks for a pet."""
+    return crud.get_tasks_by_pet_id(pet_id)
+
+
+@app.post(
+    "/pets/tasks/{task_id}/submit",
+    response_model=models.PetCareTask,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def submit_pet_care_task(
+    task_id: str,
+    submission: models.PetCareTaskSubmission,
+    current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+):
+    """Kid submits completion of a pet care task."""
+    task = crud.submit_pet_care_task(task_id=task_id, kid_user=current_kid, notes=submission.notes)
+    if not task:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not submit pet care task.")
+    return task
+
+
+@app.get("/parent/pet-task-submissions/pending", response_model=List[models.PetCareTask])  # noqa: UP006
+async def get_pending_pet_task_submissions(
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Parent retrieves all pending pet care task submissions."""
+    pending_tasks = crud.get_tasks_by_status(models.PetCareTaskStatus.PENDING_APPROVAL)
+    # Filter to only tasks for pets the parent owns
+    parent_pets = crud.get_pets_by_parent_id(current_parent.id)
+    parent_pet_ids = {pet.id for pet in parent_pets}
+    return [task for task in pending_tasks if task.pet_id in parent_pet_ids]
+
+
+class PetCareTaskActionRequest(models.BaseModel):
+    task_id: str
+
+
+@app.post("/parent/pet-task-submissions/approve", response_model=models.PetCareTask)
+async def approve_pet_care_task_submission(
+    request_data: PetCareTaskActionRequest,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Parent approves a pet care task submission. Points are awarded to the kid."""
+    approved_task = crud.update_pet_care_task_status(
+        task_id=request_data.task_id,
+        new_status=models.PetCareTaskStatus.APPROVED,
+        parent_user=current_parent,
+    )
+    if not approved_task:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to approve pet care task."
+        )
+    return approved_task
+
+
+@app.post("/parent/pet-task-submissions/reject", response_model=models.PetCareTask)
+async def reject_pet_care_task_submission(
+    request_data: PetCareTaskActionRequest,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """Parent rejects a pet care task submission."""
+    rejected_task = crud.update_pet_care_task_status(
+        task_id=request_data.task_id,
+        new_status=models.PetCareTaskStatus.REJECTED,
+        parent_user=current_parent,
+    )
+    if not rejected_task:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to reject pet care task.")
+    return rejected_task
+
+
+# Pet Health Logs
+@app.post("/pets/{pet_id}/health-logs/", response_model=models.PetHealthLog, status_code=status.HTTP_201_CREATED)
+async def create_pet_health_log(
+    pet_id: str,
+    log_in: models.PetHealthLogCreate,
+    current_user: models.User = Depends(get_current_active_user),  # noqa: B008
+):
+    """Create a health log entry for a pet. Any authenticated user can log."""
+    if log_in.pet_id != pet_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pet ID mismatch.")
+    return crud.create_pet_health_log(log_in=log_in, user=current_user)
+
+
+@app.get("/pets/{pet_id}/health-logs/", response_model=List[models.PetHealthLog])  # noqa: UP006
+async def get_pet_health_logs(
+    pet_id: str,
+    current_user: models.User = Depends(get_current_active_user),  # noqa: B008
+):
+    """Get all health logs for a pet, ordered by most recent first."""
+    return crud.get_health_logs_by_pet_id(pet_id)
+
+
+# Pet Care Overview
+@app.get("/pets/overview/", response_model=dict)
+async def get_pet_care_overview(
+    current_user: models.User = Depends(get_current_active_user),  # noqa: B008
+):
+    """Get an overview of all pets with their current status and upcoming tasks."""
+    pets = crud.get_active_pets()
+    overview = []
+
+    for pet in pets:
+        pet_with_age = pet_care.get_pet_with_age(pet)
+        care_rec = pet_care.get_care_recommendations(pet.species, pet_with_age.life_stage)
+        tasks = crud.get_tasks_by_pet_id(pet.id)
+
+        # Get recent health logs
+        health_logs = crud.get_health_logs_by_pet_id(pet.id)
+        latest_weight = health_logs[0] if health_logs else None
+
+        # Count tasks by status
+        pending_count = sum(1 for t in tasks if t.status == models.PetCareTaskStatus.ASSIGNED)
+        awaiting_approval = sum(1 for t in tasks if t.status == models.PetCareTaskStatus.PENDING_APPROVAL)
+
+        overview.append(
+            {
+                "pet": pet_with_age.model_dump(),
+                "care_recommendations": care_rec.model_dump(),
+                "latest_weight": latest_weight.model_dump() if latest_weight else None,
+                "pending_tasks": pending_count,
+                "awaiting_approval": awaiting_approval,
+            }
+        )
+
+    return {"pets": overview}
