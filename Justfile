@@ -258,13 +258,32 @@ venv:
 
 # === Backend Commands ===
 
-# Start backend API with SAM local
+# Start backend API with SAM local (requires Docker)
 backend:
     @echo "Starting backend API with SAM local..."
     sam local start-api -t backend/template.yaml \
         --env-vars local-env.json \
         --docker-network kidsrewards-network \
         --parameter-overrides "AppImageUri=kidsrewardslambdafunction:latest TableNamePrefix=local- LocalDynamoDBEndpoint=http://localhost:8000"
+
+# Start backend API with uvicorn (faster, no Docker required - use if SAM has issues)
+backend-uvicorn:
+    @echo "Starting backend API with uvicorn (no Docker required)..."
+    cd backend && source venv/bin/activate 2>/dev/null || source ../venv/bin/activate 2>/dev/null || source ../.venv/bin/activate 2>/dev/null || true && \
+    DYNAMODB_ENDPOINT_OVERRIDE=http://localhost:8000 \
+    USERS_TABLE_NAME=KidsRewardsUsers \
+    STORE_ITEMS_TABLE_NAME=KidsRewardsStoreItems \
+    PURCHASE_LOGS_TABLE_NAME=KidsRewardsPurchaseLogs \
+    CHORES_TABLE_NAME=KidsRewardsChores \
+    CHORE_LOGS_TABLE_NAME=KidsRewardsChoreLogs \
+    REQUESTS_TABLE_NAME=KidsRewardsRequests \
+    CHORE_ASSIGNMENTS_TABLE_NAME=KidsRewardsChoreAssignments \
+    PETS_TABLE_NAME=KidsRewardsPets \
+    PET_CARE_SCHEDULES_TABLE_NAME=KidsRewardsPetCareSchedules \
+    PET_CARE_TASK_INSTANCES_TABLE_NAME=KidsRewardsPetCareTasks \
+    PET_HEALTH_LOGS_TABLE_NAME=KidsRewardsPetHealthLogs \
+    APP_SECRET_KEY=random_testing_app_secret_key_for_local_development \
+    uvicorn main:app --host 0.0.0.0 --port 3000 --reload
 
 # Build SAM application
 build-backend:
@@ -561,7 +580,101 @@ db-create-tables:
                 '[{"IndexName": "RequesterIdCreatedAtGSI","KeySchema": [{"AttributeName":"requester_id","KeyType":"HASH"}, {"AttributeName":"created_at","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"},"ProvisionedThroughput":{"ReadCapacityUnits":2,"WriteCapacityUnits":2}},{"IndexName": "StatusCreatedAtGSI","KeySchema": [{"AttributeName":"status","KeyType":"HASH"}, {"AttributeName":"created_at","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"},"ProvisionedThroughput":{"ReadCapacityUnits":2,"WriteCapacityUnits":2}}]' \
             --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsRequests"
     fi
-    
+
+    # KidsRewardsChoreAssignments table
+    if echo "$existing_tables" | grep -q "KidsRewardsChoreAssignments"; then
+        echo "✓ KidsRewardsChoreAssignments table already exists"
+    else
+        echo "Creating KidsRewardsChoreAssignments table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsChoreAssignments \
+            --attribute-definitions \
+                AttributeName=id,AttributeType=S \
+                AttributeName=assigned_to_kid_id,AttributeType=S \
+                AttributeName=due_date,AttributeType=S \
+                AttributeName=assigned_by_parent_id,AttributeType=S \
+                AttributeName=assignment_status,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --provisioned-throughput ReadCapacityUnits=5,WriteCapacityUnits=5 \
+            --global-secondary-indexes \
+                '[{"IndexName":"KidAssignmentsIndex","KeySchema":[{"AttributeName":"assigned_to_kid_id","KeyType":"HASH"},{"AttributeName":"due_date","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"},"ProvisionedThroughput":{"ReadCapacityUnits":2,"WriteCapacityUnits":2}},{"IndexName":"ParentAssignmentsIndex","KeySchema":[{"AttributeName":"assigned_by_parent_id","KeyType":"HASH"},{"AttributeName":"due_date","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"},"ProvisionedThroughput":{"ReadCapacityUnits":2,"WriteCapacityUnits":2}},{"IndexName":"StatusAssignmentsIndex","KeySchema":[{"AttributeName":"assignment_status","KeyType":"HASH"},{"AttributeName":"due_date","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"},"ProvisionedThroughput":{"ReadCapacityUnits":2,"WriteCapacityUnits":2}}]' \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsChoreAssignments"
+    fi
+
+    # KidsRewardsPets table (on-demand billing for cost optimization)
+    if echo "$existing_tables" | grep -q "KidsRewardsPets"; then
+        echo "✓ KidsRewardsPets table already exists"
+    else
+        echo "Creating KidsRewardsPets table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsPets \
+            --attribute-definitions \
+                AttributeName=id,AttributeType=S \
+                AttributeName=parent_id,AttributeType=S \
+                AttributeName=is_active,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --billing-mode PAY_PER_REQUEST \
+            --global-secondary-indexes \
+                '[{"IndexName":"ParentPetsIndex","KeySchema":[{"AttributeName":"parent_id","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}},{"IndexName":"ActivePetsIndex","KeySchema":[{"AttributeName":"is_active","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}]' \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsPets"
+    fi
+
+    # KidsRewardsPetCareSchedules table (on-demand billing)
+    if echo "$existing_tables" | grep -q "KidsRewardsPetCareSchedules"; then
+        echo "✓ KidsRewardsPetCareSchedules table already exists"
+    else
+        echo "Creating KidsRewardsPetCareSchedules table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsPetCareSchedules \
+            --attribute-definitions \
+                AttributeName=id,AttributeType=S \
+                AttributeName=pet_id,AttributeType=S \
+                AttributeName=is_active,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --billing-mode PAY_PER_REQUEST \
+            --global-secondary-indexes \
+                '[{"IndexName":"PetSchedulesIndex","KeySchema":[{"AttributeName":"pet_id","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}},{"IndexName":"ActiveSchedulesIndex","KeySchema":[{"AttributeName":"is_active","KeyType":"HASH"}],"Projection":{"ProjectionType":"ALL"}}]' \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsPetCareSchedules"
+    fi
+
+    # KidsRewardsPetCareTasks table (on-demand billing)
+    if echo "$existing_tables" | grep -q "KidsRewardsPetCareTasks"; then
+        echo "✓ KidsRewardsPetCareTasks table already exists"
+    else
+        echo "Creating KidsRewardsPetCareTasks table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsPetCareTasks \
+            --attribute-definitions \
+                AttributeName=id,AttributeType=S \
+                AttributeName=assigned_to_kid_id,AttributeType=S \
+                AttributeName=due_date,AttributeType=S \
+                AttributeName=pet_id,AttributeType=S \
+                AttributeName=status,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --billing-mode PAY_PER_REQUEST \
+            --global-secondary-indexes \
+                '[{"IndexName":"KidTasksIndex","KeySchema":[{"AttributeName":"assigned_to_kid_id","KeyType":"HASH"},{"AttributeName":"due_date","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},{"IndexName":"PetTasksIndex","KeySchema":[{"AttributeName":"pet_id","KeyType":"HASH"},{"AttributeName":"due_date","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}},{"IndexName":"TaskStatusIndex","KeySchema":[{"AttributeName":"status","KeyType":"HASH"},{"AttributeName":"due_date","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]' \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsPetCareTasks"
+    fi
+
+    # KidsRewardsPetHealthLogs table (on-demand billing)
+    if echo "$existing_tables" | grep -q "KidsRewardsPetHealthLogs"; then
+        echo "✓ KidsRewardsPetHealthLogs table already exists"
+    else
+        echo "Creating KidsRewardsPetHealthLogs table..."
+        aws dynamodb create-table \
+            --table-name KidsRewardsPetHealthLogs \
+            --attribute-definitions \
+                AttributeName=id,AttributeType=S \
+                AttributeName=pet_id,AttributeType=S \
+                AttributeName=logged_at,AttributeType=S \
+            --key-schema AttributeName=id,KeyType=HASH \
+            --billing-mode PAY_PER_REQUEST \
+            --global-secondary-indexes \
+                '[{"IndexName":"PetHealthLogsIndex","KeySchema":[{"AttributeName":"pet_id","KeyType":"HASH"},{"AttributeName":"logged_at","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}]' \
+            --endpoint-url http://localhost:8000 >/dev/null 2>&1 && echo "✓ Created KidsRewardsPetHealthLogs"
+    fi
+
     echo "✅ All tables ready!"
 
 # Start DynamoDB local (following README instructions)
@@ -704,8 +817,43 @@ health:
 
 # Shortcuts for common commands
 b: backend
+bu: backend-uvicorn
 f: frontend
 t: test
 fmt: format
 dev: start-dev
 stop: stop-dev
+
+# Simple dev setup - starts DynamoDB + instructions for terminals
+dev-simple:
+    #!/usr/bin/env bash
+    echo "🚀 Simple Dev Environment Setup"
+    echo "================================"
+    echo ""
+
+    # Check and start DynamoDB
+    if ! curl -s http://localhost:8000 >/dev/null 2>&1; then
+        echo "Starting DynamoDB..."
+        just db-start-detached
+        sleep 3
+        just db-create-tables
+    else
+        echo "✅ DynamoDB already running"
+    fi
+
+    echo ""
+    echo "📋 Start these commands in separate terminals:"
+    echo ""
+    echo "  Terminal 1 (Backend):  just backend"
+    echo "  Terminal 2 (Frontend): just frontend"
+    echo ""
+    echo "💡 If SAM has Docker issues, use: just backend-uvicorn"
+    echo ""
+    echo "🔑 Test credentials:"
+    echo "   • Parent: testparent / password456"
+    echo "   • Kid: testkid / password123"
+    echo ""
+    echo "📍 URLs:"
+    echo "   • Frontend: http://localhost:3001"
+    echo "   • Backend:  http://localhost:3000"
+    echo "   • API Docs: http://localhost:3000/docs"

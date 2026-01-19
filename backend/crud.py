@@ -27,6 +27,10 @@ REQUESTS_TABLE_NAME = os.getenv("REQUESTS_TABLE_NAME", "KidsRewardsRequests")  #
 CHORE_ASSIGNMENTS_TABLE_NAME = os.getenv(
     "CHORE_ASSIGNMENTS_TABLE_NAME", "KidsRewardsChoreAssignments"
 )  # New table for chore assignments
+PETS_TABLE_NAME = os.getenv("PETS_TABLE_NAME", "KidsRewardsPets")
+PET_CARE_SCHEDULES_TABLE_NAME = os.getenv("PET_CARE_SCHEDULES_TABLE_NAME", "KidsRewardsPetCareSchedules")
+PET_CARE_TASKS_TABLE_NAME = os.getenv("PET_CARE_TASKS_TABLE_NAME", "KidsRewardsPetCareTasks")
+PET_HEALTH_LOGS_TABLE_NAME = os.getenv("PET_HEALTH_LOGS_TABLE_NAME", "KidsRewardsPetHealthLogs")
 
 if DYNAMODB_ENDPOINT_OVERRIDE:
     dynamodb = boto3.resource("dynamodb", endpoint_url=DYNAMODB_ENDPOINT_OVERRIDE, region_name=AWS_REGION)
@@ -41,6 +45,10 @@ chores_table = dynamodb.Table(CHORES_TABLE_NAME)
 chore_logs_table = dynamodb.Table(CHORE_LOGS_TABLE_NAME)
 requests_table = dynamodb.Table(REQUESTS_TABLE_NAME)  # New table resource for requests
 chore_assignments_table = dynamodb.Table(CHORE_ASSIGNMENTS_TABLE_NAME)  # New table resource for chore assignments
+pets_table = dynamodb.Table(PETS_TABLE_NAME)
+pet_care_schedules_table = dynamodb.Table(PET_CARE_SCHEDULES_TABLE_NAME)
+pet_care_tasks_table = dynamodb.Table(PET_CARE_TASKS_TABLE_NAME)
+pet_health_logs_table = dynamodb.Table(PET_HEALTH_LOGS_TABLE_NAME)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -1483,3 +1491,634 @@ def update_assignment_status(
         # If points were awarded but this failed, there's an inconsistency.
         # More robust transaction handling might be needed for production (e.g. DynamoDB Transactions).
         return None
+
+
+# --- Pet CRUD ---
+
+
+def create_pet(pet_in: models.PetCreate, parent_id: str) -> models.Pet:
+    pet_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow()
+
+    pet_data = {
+        "id": pet_id,
+        "parent_id": parent_id,
+        "name": pet_in.name,
+        "species": pet_in.species.value,
+        "birthday": pet_in.birthday.isoformat(),
+        "photo_url": pet_in.photo_url,
+        "care_notes": pet_in.care_notes,
+        "is_active": "true",
+        "created_at": timestamp.isoformat(),
+        "updated_at": timestamp.isoformat(),
+    }
+    pet_item = {k: v for k, v in pet_data.items() if v is not None}
+
+    try:
+        pets_table.put_item(Item=pet_item)
+        return models.Pet(
+            id=pet_id,
+            parent_id=parent_id,
+            name=pet_in.name,
+            species=pet_in.species,
+            birthday=pet_in.birthday,
+            photo_url=pet_in.photo_url,
+            care_notes=pet_in.care_notes,
+            is_active=True,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+    except ClientError as e:
+        print(f"Error creating pet {pet_in.name}: {e}")
+        raise HTTPException(status_code=500, detail="Could not create pet in database.") from e
+
+
+def get_pet_by_id(pet_id: str) -> Optional[models.Pet]:
+    try:
+        response = pets_table.get_item(Key={"id": pet_id})
+        item = response.get("Item")
+        if item:
+            return models.Pet(**replace_decimals(item))
+        return None
+    except ClientError as e:
+        print(f"Error getting pet {pet_id}: {e}")
+        return None
+
+
+def get_pets_by_parent_id(parent_id: str) -> List[models.Pet]:  # noqa: UP006
+    try:
+        response = pets_table.query(
+            IndexName="ParentPetsIndex",
+            KeyConditionExpression=Key("parent_id").eq(parent_id),
+        )
+        items = response.get("Items", [])
+        return [models.Pet(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'ParentPetsIndex' not found. Falling back to scan.")
+            all_pets = get_all_pets_scan_fallback()
+            return [p for p in all_pets if p.parent_id == parent_id]
+        print(f"Error getting pets for parent {parent_id}: {e}")
+        return []
+
+
+def get_active_pets() -> List[models.Pet]:  # noqa: UP006
+    try:
+        response = pets_table.query(
+            IndexName="ActivePetsIndex",
+            KeyConditionExpression=Key("is_active").eq("true"),
+        )
+        items = response.get("Items", [])
+        return [models.Pet(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'ActivePetsIndex' not found. Falling back to scan.")
+            all_pets = get_all_pets_scan_fallback()
+            return [p for p in all_pets if p.is_active]
+        print(f"Error getting active pets: {e}")
+        return []
+
+
+def get_all_pets_scan_fallback() -> List[models.Pet]:  # noqa: UP006
+    try:
+        response = pets_table.scan()
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = pets_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+        return [models.Pet(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error scanning all pets (fallback): {e}")
+        return []
+
+
+def update_pet(pet_id: str, pet_in: models.PetCreate, parent_id: str) -> Optional[models.Pet]:
+    existing_pet = get_pet_by_id(pet_id)
+    if not existing_pet:
+        return None
+    if existing_pet.parent_id != parent_id:
+        raise HTTPException(status_code=403, detail="Not authorized to update this pet.")
+
+    timestamp = datetime.utcnow().isoformat()
+    try:
+        response = pets_table.update_item(
+            Key={"id": pet_id},
+            UpdateExpression="SET #n = :n, species = :sp, birthday = :bd, photo_url = :pu, care_notes = :cn, updated_at = :ua",
+            ExpressionAttributeNames={"#n": "name"},
+            ExpressionAttributeValues={
+                ":n": pet_in.name,
+                ":sp": pet_in.species.value,
+                ":bd": pet_in.birthday.isoformat(),
+                ":pu": pet_in.photo_url,
+                ":cn": pet_in.care_notes,
+                ":ua": timestamp,
+                ":pid": parent_id,
+            },
+            ConditionExpression="parent_id = :pid",
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.Pet(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise HTTPException(status_code=403, detail="Not authorized to update this pet.") from e
+        print(f"Error updating pet {pet_id}: {e}")
+        return None
+
+
+def deactivate_pet(pet_id: str, parent_id: str) -> Optional[models.Pet]:
+    existing_pet = get_pet_by_id(pet_id)
+    if not existing_pet:
+        return None
+    if existing_pet.parent_id != parent_id:
+        raise HTTPException(status_code=403, detail="Not authorized to deactivate this pet.")
+
+    timestamp = datetime.utcnow().isoformat()
+    try:
+        response = pets_table.update_item(
+            Key={"id": pet_id},
+            UpdateExpression="SET is_active = :ia, updated_at = :ua",
+            ExpressionAttributeValues={
+                ":ia": "false",
+                ":ua": timestamp,
+                ":pid": parent_id,
+            },
+            ConditionExpression="parent_id = :pid",
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.Pet(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise HTTPException(status_code=403, detail="Not authorized to deactivate this pet.") from e
+        print(f"Error deactivating pet {pet_id}: {e}")
+        return None
+
+
+# --- Pet Care Schedule CRUD ---
+
+
+def create_pet_care_schedule(
+    schedule_in: models.PetCareScheduleCreate, parent_id: str
+) -> models.PetCareSchedule:
+    pet = get_pet_by_id(schedule_in.pet_id)
+    if not pet or not pet.is_active:
+        raise HTTPException(status_code=404, detail="Active pet not found.")
+    if pet.parent_id != parent_id:
+        raise HTTPException(status_code=403, detail="Not authorized to create schedule for this pet.")
+
+    schedule_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow()
+
+    schedule_data = {
+        "id": schedule_id,
+        "pet_id": schedule_in.pet_id,
+        "parent_id": parent_id,
+        "task_name": schedule_in.task_name,
+        "description": schedule_in.description,
+        "frequency": schedule_in.frequency.value,
+        "points_value": Decimal(schedule_in.points_value),
+        "day_of_week": schedule_in.day_of_week,
+        "due_by_time": schedule_in.due_by_time,
+        "assigned_kid_ids": schedule_in.assigned_kid_ids,
+        "rotation_index": Decimal(0),
+        "is_active": "true",
+        "created_at": timestamp.isoformat(),
+        "updated_at": timestamp.isoformat(),
+    }
+    schedule_item = {k: v for k, v in schedule_data.items() if v is not None}
+
+    try:
+        pet_care_schedules_table.put_item(Item=schedule_item)
+        return models.PetCareSchedule(
+            id=schedule_id,
+            pet_id=schedule_in.pet_id,
+            parent_id=parent_id,
+            task_name=schedule_in.task_name,
+            description=schedule_in.description,
+            frequency=schedule_in.frequency,
+            points_value=schedule_in.points_value,
+            day_of_week=schedule_in.day_of_week,
+            due_by_time=schedule_in.due_by_time,
+            assigned_kid_ids=schedule_in.assigned_kid_ids,
+            rotation_index=0,
+            is_active=True,
+            created_at=timestamp,
+            updated_at=timestamp,
+        )
+    except ClientError as e:
+        print(f"Error creating pet care schedule: {e}")
+        raise HTTPException(status_code=500, detail="Could not create pet care schedule.") from e
+
+
+def get_schedule_by_id(schedule_id: str) -> Optional[models.PetCareSchedule]:
+    try:
+        response = pet_care_schedules_table.get_item(Key={"id": schedule_id})
+        item = response.get("Item")
+        if item:
+            return models.PetCareSchedule(**replace_decimals(item))
+        return None
+    except ClientError as e:
+        print(f"Error getting schedule {schedule_id}: {e}")
+        return None
+
+
+def get_schedules_by_pet_id(pet_id: str) -> List[models.PetCareSchedule]:  # noqa: UP006
+    try:
+        response = pet_care_schedules_table.query(
+            IndexName="PetSchedulesIndex",
+            KeyConditionExpression=Key("pet_id").eq(pet_id),
+        )
+        items = response.get("Items", [])
+        return [models.PetCareSchedule(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'PetSchedulesIndex' not found. Falling back to scan.")
+            all_schedules = get_all_schedules_scan_fallback()
+            return [s for s in all_schedules if s.pet_id == pet_id]
+        print(f"Error getting schedules for pet {pet_id}: {e}")
+        return []
+
+
+def get_active_schedules() -> List[models.PetCareSchedule]:  # noqa: UP006
+    try:
+        response = pet_care_schedules_table.query(
+            IndexName="ActiveSchedulesIndex",
+            KeyConditionExpression=Key("is_active").eq("true"),
+        )
+        items = response.get("Items", [])
+        return [models.PetCareSchedule(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'ActiveSchedulesIndex' not found. Falling back to scan.")
+            all_schedules = get_all_schedules_scan_fallback()
+            return [s for s in all_schedules if s.is_active]
+        print(f"Error getting active schedules: {e}")
+        return []
+
+
+def get_all_schedules_scan_fallback() -> List[models.PetCareSchedule]:  # noqa: UP006
+    try:
+        response = pet_care_schedules_table.scan()
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = pet_care_schedules_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+        return [models.PetCareSchedule(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error scanning all schedules (fallback): {e}")
+        return []
+
+
+def update_schedule_rotation_index(schedule_id: str, new_index: int) -> Optional[models.PetCareSchedule]:
+    try:
+        response = pet_care_schedules_table.update_item(
+            Key={"id": schedule_id},
+            UpdateExpression="SET rotation_index = :ri, updated_at = :ua",
+            ExpressionAttributeValues={
+                ":ri": Decimal(new_index),
+                ":ua": datetime.utcnow().isoformat(),
+            },
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.PetCareSchedule(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        print(f"Error updating schedule rotation index {schedule_id}: {e}")
+        return None
+
+
+def deactivate_schedule(schedule_id: str, parent_id: str) -> Optional[models.PetCareSchedule]:
+    existing_schedule = get_schedule_by_id(schedule_id)
+    if not existing_schedule:
+        return None
+    if existing_schedule.parent_id != parent_id:
+        raise HTTPException(status_code=403, detail="Not authorized to deactivate this schedule.")
+
+    timestamp = datetime.utcnow().isoformat()
+    try:
+        response = pet_care_schedules_table.update_item(
+            Key={"id": schedule_id},
+            UpdateExpression="SET is_active = :ia, updated_at = :ua",
+            ExpressionAttributeValues={
+                ":ia": "false",
+                ":ua": timestamp,
+                ":pid": parent_id,
+            },
+            ConditionExpression="parent_id = :pid",
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.PetCareSchedule(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise HTTPException(status_code=403, detail="Not authorized to deactivate this schedule.") from e
+        print(f"Error deactivating schedule {schedule_id}: {e}")
+        return None
+
+
+# --- Pet Care Task CRUD ---
+
+
+def create_pet_care_task(task_in: models.PetCareTaskCreate) -> models.PetCareTask:
+    task_id = str(uuid.uuid4())
+    timestamp = datetime.utcnow()
+
+    task_data = {
+        "id": task_id,
+        "schedule_id": task_in.schedule_id,
+        "pet_id": task_in.pet_id,
+        "pet_name": task_in.pet_name,
+        "task_name": task_in.task_name,
+        "description": task_in.description,
+        "points_value": Decimal(task_in.points_value),
+        "assigned_to_kid_id": task_in.assigned_to_kid_id,
+        "assigned_to_kid_username": task_in.assigned_to_kid_username,
+        "due_date": task_in.due_date.isoformat(),
+        "status": models.PetCareTaskStatus.ASSIGNED.value,
+        "created_at": timestamp.isoformat(),
+        "submitted_at": None,
+        "submission_notes": None,
+        "reviewed_by_parent_id": None,
+        "reviewed_at": None,
+    }
+    task_item = {k: v for k, v in task_data.items() if v is not None}
+
+    try:
+        pet_care_tasks_table.put_item(Item=task_item)
+        return models.PetCareTask(
+            id=task_id,
+            schedule_id=task_in.schedule_id,
+            pet_id=task_in.pet_id,
+            pet_name=task_in.pet_name,
+            task_name=task_in.task_name,
+            description=task_in.description,
+            points_value=task_in.points_value,
+            assigned_to_kid_id=task_in.assigned_to_kid_id,
+            assigned_to_kid_username=task_in.assigned_to_kid_username,
+            due_date=task_in.due_date,
+            status=models.PetCareTaskStatus.ASSIGNED,
+            created_at=timestamp,
+        )
+    except ClientError as e:
+        print(f"Error creating pet care task: {e}")
+        raise HTTPException(status_code=500, detail="Could not create pet care task.") from e
+
+
+def get_task_by_id(task_id: str) -> Optional[models.PetCareTask]:
+    try:
+        response = pet_care_tasks_table.get_item(Key={"id": task_id})
+        item = response.get("Item")
+        if item:
+            return models.PetCareTask(**replace_decimals(item))
+        return None
+    except ClientError as e:
+        print(f"Error getting task {task_id}: {e}")
+        return None
+
+
+def get_tasks_by_kid_id(kid_id: str) -> List[models.PetCareTask]:  # noqa: UP006
+    try:
+        response = pet_care_tasks_table.query(
+            IndexName="KidTasksIndex",
+            KeyConditionExpression=Key("assigned_to_kid_id").eq(kid_id),
+            ScanIndexForward=True,
+        )
+        items = response.get("Items", [])
+        return [models.PetCareTask(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'KidTasksIndex' not found. Falling back to scan.")
+            all_tasks = get_all_tasks_scan_fallback()
+            return sorted([t for t in all_tasks if t.assigned_to_kid_id == kid_id], key=lambda x: x.due_date)
+        print(f"Error getting tasks for kid {kid_id}: {e}")
+        return []
+
+
+def get_tasks_by_pet_id(pet_id: str) -> List[models.PetCareTask]:  # noqa: UP006
+    try:
+        response = pet_care_tasks_table.query(
+            IndexName="PetTasksIndex",
+            KeyConditionExpression=Key("pet_id").eq(pet_id),
+            ScanIndexForward=True,
+        )
+        items = response.get("Items", [])
+        return [models.PetCareTask(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'PetTasksIndex' not found. Falling back to scan.")
+            all_tasks = get_all_tasks_scan_fallback()
+            return sorted([t for t in all_tasks if t.pet_id == pet_id], key=lambda x: x.due_date)
+        print(f"Error getting tasks for pet {pet_id}: {e}")
+        return []
+
+
+def get_tasks_by_status(status: models.PetCareTaskStatus) -> List[models.PetCareTask]:  # noqa: UP006
+    try:
+        response = pet_care_tasks_table.query(
+            IndexName="TaskStatusIndex",
+            KeyConditionExpression=Key("status").eq(status.value),
+            ScanIndexForward=True,
+        )
+        items = response.get("Items", [])
+        return [models.PetCareTask(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'TaskStatusIndex' not found. Falling back to scan.")
+            all_tasks = get_all_tasks_scan_fallback()
+            return sorted([t for t in all_tasks if t.status == status], key=lambda x: x.due_date)
+        print(f"Error getting tasks by status {status}: {e}")
+        return []
+
+
+def get_all_tasks_scan_fallback() -> List[models.PetCareTask]:  # noqa: UP006
+    try:
+        response = pet_care_tasks_table.scan()
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = pet_care_tasks_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+        return [models.PetCareTask(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error scanning all tasks (fallback): {e}")
+        return []
+
+
+def submit_pet_care_task(
+    task_id: str, kid_user: models.User, notes: Optional[str] = None
+) -> Optional[models.PetCareTask]:
+    task = get_task_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    if task.assigned_to_kid_id != kid_user.username:
+        raise HTTPException(status_code=403, detail="Not authorized to submit this task.")
+
+    if task.status != models.PetCareTaskStatus.ASSIGNED:
+        raise HTTPException(
+            status_code=400, detail=f"Task is not in assigned status. Current status: {task.status}"
+        )
+
+    submitted_at_ts = datetime.utcnow()
+    try:
+        update_expression = "SET #s = :s, submitted_at = :sat"
+        expression_attribute_values = {
+            ":s": models.PetCareTaskStatus.PENDING_APPROVAL.value,
+            ":sat": submitted_at_ts.isoformat(),
+            ":kid_id": kid_user.username,
+        }
+
+        if notes is not None:
+            update_expression += ", submission_notes = :notes"
+            expression_attribute_values[":notes"] = notes
+
+        response = pet_care_tasks_table.update_item(
+            Key={"id": task_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues=expression_attribute_values,
+            ConditionExpression="assigned_to_kid_id = :kid_id",
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.PetCareTask(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+            raise HTTPException(status_code=403, detail="Not authorized to submit this task.") from e
+        print(f"Error submitting task {task_id}: {e}")
+        return None
+
+
+def update_pet_care_task_status(
+    task_id: str,
+    new_status: models.PetCareTaskStatus,
+    parent_user: models.User,
+) -> Optional[models.PetCareTask]:
+    task = get_task_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    if task.status != models.PetCareTaskStatus.PENDING_APPROVAL:
+        raise HTTPException(
+            status_code=400, detail=f"Task is not pending approval. Current status: {task.status}"
+        )
+
+    pet = get_pet_by_id(task.pet_id)
+    if not pet or pet.parent_id != parent_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized to review this task.")
+
+    reviewed_at_ts = datetime.utcnow()
+
+    if new_status == models.PetCareTaskStatus.APPROVED:
+        _award_points_and_streak_bonus(task.assigned_to_kid_username, task.points_value)
+
+    try:
+        response = pet_care_tasks_table.update_item(
+            Key={"id": task_id},
+            UpdateExpression="SET #s = :s, reviewed_by_parent_id = :pid, reviewed_at = :rat",
+            ExpressionAttributeNames={"#s": "status"},
+            ExpressionAttributeValues={
+                ":s": new_status.value,
+                ":pid": parent_user.id,
+                ":rat": reviewed_at_ts.isoformat(),
+            },
+            ReturnValues="ALL_NEW",
+        )
+        updated_attributes = response.get("Attributes")
+        if updated_attributes:
+            return models.PetCareTask(**replace_decimals(updated_attributes))
+        return None
+    except ClientError as e:
+        print(f"Error updating task {task_id} status: {e}")
+        return None
+
+
+# --- Pet Health Log CRUD ---
+
+
+def create_pet_health_log(
+    log_in: models.PetHealthLogCreate, user: models.User
+) -> models.PetHealthLog:
+    import pet_care
+
+    pet = get_pet_by_id(log_in.pet_id)
+    if not pet or not pet.is_active:
+        raise HTTPException(status_code=404, detail="Active pet not found.")
+
+    log_id = str(uuid.uuid4())
+    logged_at = datetime.utcnow()
+
+    age_months = pet_care.calculate_age_months(pet.birthday, logged_at)
+    life_stage = pet_care.calculate_life_stage(pet.species, age_months)
+    weight_status = pet_care.evaluate_weight(pet.species, life_stage, log_in.weight_grams)
+
+    log_data = {
+        "id": log_id,
+        "pet_id": log_in.pet_id,
+        "weight_grams": Decimal(log_in.weight_grams),
+        "notes": log_in.notes,
+        "logged_by_user_id": user.id,
+        "logged_by_username": user.username,
+        "logged_at": logged_at.isoformat(),
+        "weight_status": weight_status.value,
+        "life_stage_at_log": life_stage.value,
+    }
+    log_item = {k: v for k, v in log_data.items() if v is not None}
+
+    try:
+        pet_health_logs_table.put_item(Item=log_item)
+        return models.PetHealthLog(
+            id=log_id,
+            pet_id=log_in.pet_id,
+            weight_grams=log_in.weight_grams,
+            notes=log_in.notes,
+            logged_by_user_id=user.id,
+            logged_by_username=user.username,
+            logged_at=logged_at,
+            weight_status=weight_status,
+            life_stage_at_log=life_stage,
+        )
+    except ClientError as e:
+        print(f"Error creating health log: {e}")
+        raise HTTPException(status_code=500, detail="Could not create health log.") from e
+
+
+def get_health_logs_by_pet_id(pet_id: str) -> List[models.PetHealthLog]:  # noqa: UP006
+    try:
+        response = pet_health_logs_table.query(
+            IndexName="PetHealthLogsIndex",
+            KeyConditionExpression=Key("pet_id").eq(pet_id),
+            ScanIndexForward=False,
+        )
+        items = response.get("Items", [])
+        return [models.PetHealthLog(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ResourceNotFoundException":
+            print("Warning: GSI 'PetHealthLogsIndex' not found. Falling back to scan.")
+            all_logs = get_all_health_logs_scan_fallback()
+            return sorted([l for l in all_logs if l.pet_id == pet_id], key=lambda x: x.logged_at, reverse=True)
+        print(f"Error getting health logs for pet {pet_id}: {e}")
+        return []
+
+
+def get_all_health_logs_scan_fallback() -> List[models.PetHealthLog]:  # noqa: UP006
+    try:
+        response = pet_health_logs_table.scan()
+        items = response.get("Items", [])
+        while "LastEvaluatedKey" in response:
+            response = pet_health_logs_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
+            items.extend(response.get("Items", []))
+        return [models.PetHealthLog(**replace_decimals(item)) for item in items]
+    except ClientError as e:
+        print(f"Error scanning all health logs (fallback): {e}")
+        return []

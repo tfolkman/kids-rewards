@@ -49,6 +49,10 @@ Resources:
           CHORE_LOGS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChoreLogs", !Sub "${TableNamePrefix}KidsRewardsChoreLogs"]
           REQUESTS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsRequests", !Sub "${TableNamePrefix}KidsRewardsRequests"] # New Table Env Var
           CHORE_ASSIGNMENTS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsChoreAssignments", !Sub "${TableNamePrefix}KidsRewardsChoreAssignments"] # New Table for Chore Assignments
+          PETS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPets", !Sub "${TableNamePrefix}KidsRewardsPets"]
+          PET_CARE_SCHEDULES_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPetCareSchedules", !Sub "${TableNamePrefix}KidsRewardsPetCareSchedules"]
+          PET_CARE_TASKS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPetCareTasks", !Sub "${TableNamePrefix}KidsRewardsPetCareTasks"]
+          PET_HEALTH_LOGS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPetHealthLogs", !Sub "${TableNamePrefix}KidsRewardsPetHealthLogs"]
           APP_SECRET_KEY: !Ref AppSecret
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
@@ -313,6 +317,138 @@ Resources:
           ProvisionedThroughput:
             ReadCapacityUnits: 2
             WriteCapacityUnits: 2
+    DeletionPolicy: Retain
+
+  KidsRewardsPetsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "KidsRewardsPets", !Sub "${TableNamePrefix}KidsRewardsPets"]
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: parent_id
+          AttributeType: S
+        - AttributeName: is_active
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: ParentPetsIndex
+          KeySchema:
+            - AttributeName: parent_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: ActivePetsIndex
+          KeySchema:
+            - AttributeName: is_active
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+    DeletionPolicy: Retain
+
+  KidsRewardsPetCareSchedulesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "KidsRewardsPetCareSchedules", !Sub "${TableNamePrefix}KidsRewardsPetCareSchedules"]
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: pet_id
+          AttributeType: S
+        - AttributeName: is_active
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: PetSchedulesIndex
+          KeySchema:
+            - AttributeName: pet_id
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: ActiveSchedulesIndex
+          KeySchema:
+            - AttributeName: is_active
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+    DeletionPolicy: Retain
+
+  KidsRewardsPetCareTasksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "KidsRewardsPetCareTasks", !Sub "${TableNamePrefix}KidsRewardsPetCareTasks"]
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: assigned_to_kid_id
+          AttributeType: S
+        - AttributeName: due_date
+          AttributeType: S
+        - AttributeName: pet_id
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: KidTasksIndex
+          KeySchema:
+            - AttributeName: assigned_to_kid_id
+              KeyType: HASH
+            - AttributeName: due_date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: PetTasksIndex
+          KeySchema:
+            - AttributeName: pet_id
+              KeyType: HASH
+            - AttributeName: due_date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: TaskStatusIndex
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: due_date
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+    DeletionPolicy: Retain
+
+  KidsRewardsPetHealthLogsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !If [IsLocalEnvironment, "KidsRewardsPetHealthLogs", !Sub "${TableNamePrefix}KidsRewardsPetHealthLogs"]
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: pet_id
+          AttributeType: S
+        - AttributeName: logged_at
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      GlobalSecondaryIndexes:
+        - IndexName: PetHealthLogsIndex
+          KeySchema:
+            - AttributeName: pet_id
+              KeyType: HASH
+            - AttributeName: logged_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
     DeletionPolicy: Retain
 
 Conditions:

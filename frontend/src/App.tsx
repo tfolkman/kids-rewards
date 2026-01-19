@@ -43,12 +43,13 @@ import {
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { Notifications, notifications } from '@mantine/notifications';
-import { 
-    IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart, 
-    IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers, 
-    IconReceipt, IconHourglassHigh, IconClipboardList, IconHistory, 
+import {
+    IconAlertCircle, IconLogin, IconUserPlus, IconHome, IconShoppingCart,
+    IconLogout, IconSettings, IconAward, IconUserUp, IconListNumbers,
+    IconReceipt, IconHourglassHigh, IconClipboardList, IconHistory,
     IconChecklist, IconMessagePlus, IconListCheck, IconMessageChatbot,
-    IconUserCheck, IconUser, IconChevronDown, IconTarget
+    IconUserCheck, IconUser, IconChevronDown, IconTarget, IconPaw,
+    IconHeartbeat, IconCalendarEvent
 } from '@tabler/icons-react';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
@@ -70,6 +71,12 @@ import ManageRequestsPage from './pages/ManageRequestsPage';
 import MyAssignedChoresPage from './pages/MyAssignedChoresPage';
 import AssignChoresPage from './pages/AssignChoresPage';
 import BeardedDragonGoalPage from './pages/BeardedDragonGoalPage';
+import ManagePetsPage from './pages/ManagePetsPage';
+import ManageSchedulesPage from './pages/ManageSchedulesPage';
+import PetCareOverviewPage from './pages/PetCareOverviewPage';
+import MyPetTasksPage from './pages/MyPetTasksPage';
+import PetHealthPage from './pages/PetHealthPage';
+import PendingPetTasksPage from './pages/PendingPetTasksPage';
 import { StreakDisplay } from './components/StreakDisplay';
 
 interface AuthContextType {
@@ -570,21 +577,50 @@ Possible intents:
                                     onClick={() => { if (mobileOpened) toggleMobile(); }}
                                     styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
                                 />
-                                <NavLink 
-                                    label="🦎 Bearded Dragon Goal" 
-                                    leftSection={<IconTarget size="1.2rem" stroke={1.5} />} 
-                                    component={RouterLink} 
-                                    to="/bearded-dragon-goal" 
-                                    active={location.pathname === "/bearded-dragon-goal"} 
+                                <NavLink
+                                    label="🦎 Bearded Dragon Goal"
+                                    leftSection={<IconTarget size="1.2rem" stroke={1.5} />}
+                                    component={RouterLink}
+                                    to="/bearded-dragon-goal"
+                                    active={location.pathname === "/bearded-dragon-goal"}
                                     onClick={() => { if (mobileOpened) toggleMobile(); }}
                                     styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
                                 />
-                                <NavLink 
-                                    label="Purchase History" 
-                                    leftSection={<IconReceipt size="1.2rem" stroke={1.5} />} 
-                                    component={RouterLink} 
-                                    to="/history" 
-                                    active={location.pathname === "/history"} 
+                                <Divider my="xs" label="Pet Care" labelPosition="center" />
+                                <NavLink
+                                    label="My Pet Tasks"
+                                    leftSection={<IconPaw size="1.2rem" stroke={1.5} />}
+                                    component={RouterLink}
+                                    to="/my-pet-tasks"
+                                    active={location.pathname === "/my-pet-tasks"}
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink
+                                    label="Pet Overview"
+                                    leftSection={<IconHeartbeat size="1.2rem" stroke={1.5} />}
+                                    component={RouterLink}
+                                    to="/pet-care-overview"
+                                    active={location.pathname === "/pet-care-overview"}
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink
+                                    label="Pet Health"
+                                    leftSection={<IconHeartbeat size="1.2rem" stroke={1.5} />}
+                                    component={RouterLink}
+                                    to="/pet-health"
+                                    active={location.pathname === "/pet-health"}
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <Divider my="xs" />
+                                <NavLink
+                                    label="Purchase History"
+                                    leftSection={<IconReceipt size="1.2rem" stroke={1.5} />}
+                                    component={RouterLink}
+                                    to="/history"
+                                    active={location.pathname === "/history"}
                                     onClick={() => { if (mobileOpened) toggleMobile(); }}
                                     styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
                                 />
@@ -639,18 +675,55 @@ Possible intents:
                                     onClick={() => { if (mobileOpened) toggleMobile(); }}
                                     styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
                                 />
-                                <NavLink 
-                                    label="🦎 Bearded Dragon Goal" 
-                                    leftSection={<IconTarget size="1.2rem" stroke={1.5} />} 
-                                    component={RouterLink} 
-                                    to="/bearded-dragon-goal" 
-                                    active={location.pathname === "/bearded-dragon-goal"} 
+                                <NavLink
+                                    label="🦎 Bearded Dragon Goal"
+                                    leftSection={<IconTarget size="1.2rem" stroke={1.5} />}
+                                    component={RouterLink}
+                                    to="/bearded-dragon-goal"
+                                    active={location.pathname === "/bearded-dragon-goal"}
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <Divider my="xs" label="Pet Care" labelPosition="center" />
+                                <NavLink
+                                    label="Manage Pets"
+                                    leftSection={<IconPaw size="1.2rem" stroke={1.5} />}
+                                    component={RouterLink}
+                                    to="/parent/manage-pets"
+                                    active={location.pathname === "/parent/manage-pets"}
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink
+                                    label="Pet Schedules"
+                                    leftSection={<IconCalendarEvent size="1.2rem" stroke={1.5} />}
+                                    component={RouterLink}
+                                    to="/parent/pet-schedules"
+                                    active={location.pathname === "/parent/pet-schedules"}
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink
+                                    label="Pending Pet Tasks"
+                                    leftSection={<IconHourglassHigh size="1.2rem" stroke={1.5} />}
+                                    component={RouterLink}
+                                    to="/parent/pending-pet-tasks"
+                                    active={location.pathname === "/parent/pending-pet-tasks"}
+                                    onClick={() => { if (mobileOpened) toggleMobile(); }}
+                                    styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
+                                />
+                                <NavLink
+                                    label="Pet Health"
+                                    leftSection={<IconHeartbeat size="1.2rem" stroke={1.5} />}
+                                    component={RouterLink}
+                                    to="/pet-health"
+                                    active={location.pathname === "/pet-health"}
                                     onClick={() => { if (mobileOpened) toggleMobile(); }}
                                     styles={{ label: { fontSize: '0.95rem', fontWeight: 500 } }}
                                 />
                             </>
                         )}
-                        
+
                         {/* User info at bottom on mobile */}
                         <Box mt="auto" pt="md" hiddenFrom="sm">
                             <Divider mb="sm" />
@@ -716,6 +789,12 @@ Possible intents:
                         <Route path="/manage-requests" element={<ManageRequestsPage />} />
                         <Route path="/parent/assign-chores" element={<AssignChoresPage />} />
                         <Route path="/bearded-dragon-goal" element={<BeardedDragonGoalPage />} />
+                        <Route path="/parent/manage-pets" element={<ManagePetsPage />} />
+                        <Route path="/parent/pet-schedules" element={<ManageSchedulesPage />} />
+                        <Route path="/parent/pending-pet-tasks" element={<PendingPetTasksPage />} />
+                        <Route path="/pet-care-overview" element={<PetCareOverviewPage />} />
+                        <Route path="/my-pet-tasks" element={<MyPetTasksPage />} />
+                        <Route path="/pet-health" element={<PetHealthPage />} />
                     </Route>
                     <Route path="*" element={<NotFoundPage />} />
                 </Routes>
