@@ -49,6 +49,7 @@ frontend/build/
 # IDE / Editor
 .vscode/
 .idea/
+.idea
 *.swp
 *~
 # Environment-specific files
@@ -60,3 +61,20 @@ coverage.xml
 
 # Project Management (AI use only)
 project_management/
+
+# Local/mounted environment files
+.bash_profile
+.bashrc
+.zshrc
+.zprofile
+.profile
+.gitconfig
+.gitmodules
+.ripgreprc
+.mcp.json
+.claude/
+docs/
+
+# Test artifacts
+frontend/test-results/
+frontend/playwright-report/data/
