@@ -194,37 +194,51 @@ jobs:
         from datetime import datetime
         import uuid
 
-        # Create test users
-        testparent = crud.create_user('testparent', security.get_password_hash('password456'), 'parent')
-        testkid = crud.create_user('testkid', security.get_password_hash('password123'), 'kid')
+        # Create test users directly in database
+        parent_data = {
+            'id': 'testparent',
+            'username': 'testparent',
+            'hashed_password': security.get_password_hash('password456'),
+            'role': 'parent',
+            'points': 0
+        }
+        crud.users_table.put_item(Item=parent_data)
+
+        kid_data = {
+            'id': 'testkid',
+            'username': 'testkid',
+            'hashed_password': security.get_password_hash('password123'),
+            'role': 'kid',
+            'points': 100
+        }
+        crud.users_table.put_item(Item=kid_data)
         print('Test users created')
 
         # Create some test chores
-        if testparent:
-            chore1 = {
-                'id': str(uuid.uuid4()),
-                'name': 'Clean Room',
-                'description': 'Make bed and organize toys',
-                'points_value': 10,
-                'created_by_parent_id': testparent['id'],
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'is_active': True
-            }
-            crud.chores_table.put_item(Item=chore1)
+        chore1 = {
+            'id': str(uuid.uuid4()),
+            'name': 'Clean Room',
+            'description': 'Make bed and organize toys',
+            'points_value': 10,
+            'created_by_parent_id': 'testparent',
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
+            'is_active': 'true'
+        }
+        crud.chores_table.put_item(Item=chore1)
 
-            chore2 = {
-                'id': str(uuid.uuid4()),
-                'name': 'Do Homework',
-                'description': 'Complete all assignments',
-                'points_value': 15,
-                'created_by_parent_id': testparent['id'],
-                'created_at': datetime.utcnow().isoformat(),
-                'updated_at': datetime.utcnow().isoformat(),
-                'is_active': True
-            }
-            crud.chores_table.put_item(Item=chore2)
-            print('Test chores created')
+        chore2 = {
+            'id': str(uuid.uuid4()),
+            'name': 'Do Homework',
+            'description': 'Complete all assignments',
+            'points_value': 15,
+            'created_by_parent_id': 'testparent',
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
+            'is_active': 'true'
+        }
+        crud.chores_table.put_item(Item=chore2)
+        print('Test chores created')
         SEED_SCRIPT
 
     # Start backend API
