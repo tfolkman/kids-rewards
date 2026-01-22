@@ -43,8 +43,8 @@ test.describe('Chore Submission Flow', () => {
     await expect(markAsDoneButton).toBeVisible();
     await markAsDoneButton.click();
     
-    // Modal should open
-    await expect(page.locator('text=Submit Chore')).toBeVisible();
+    // Modal should open - use modal title selector to avoid ambiguity with button
+    await expect(page.locator('.mantine-Modal-title:has-text("Submit Chore")')).toBeVisible();
     await expect(page.locator('text=Track how long you worked')).toBeVisible();
     
     // Start the effort timer
@@ -64,11 +64,11 @@ test.describe('Chore Submission Flow', () => {
     
     // Verify success message appears
     await expect(page.locator('text=Chore submitted successfully')).toBeVisible();
-    
-    // Modal should close
-    await expect(page.locator('text=Submit Chore')).not.toBeVisible();
+
+    // Modal should close - check title is gone
+    await expect(page.locator('.mantine-Modal-title:has-text("Submit Chore")')).not.toBeVisible();
   });
-  
+
   test('should handle retry attempts correctly', async ({ page }) => {
     // Login as kid
     await loginAsKid(page);
@@ -123,11 +123,11 @@ test.describe('Chore Submission Flow', () => {
     
     // Error should be displayed as a string, not cause React rendering error
     await expect(page.locator('text=You have already submitted this chore today')).toBeVisible();
-    
-    // Modal should close
-    await expect(page.locator('text=Submit Chore')).not.toBeVisible();
+
+    // Modal should close - check title is gone
+    await expect(page.locator('.mantine-Modal-title:has-text("Submit Chore")')).not.toBeVisible();
   });
-  
+
   test('should handle validation errors from backend correctly', async ({ page }) => {
     // Login as kid
     await loginAsKid(page);
