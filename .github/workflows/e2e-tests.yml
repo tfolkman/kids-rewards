@@ -19,16 +19,19 @@ jobs:
   e2e-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 30 # Prevent hanging tests from running forever
-    
-    services:
-      dynamodb:
-        image: amazon/dynamodb-local:latest
-        ports:
-          - 8000:8000
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+
+    # Create Docker network and start DynamoDB
+    - name: Start DynamoDB Local
+      run: |
+        docker network create e2e-network
+        docker run -d --name dynamodb --network e2e-network -p 8000:8000 amazon/dynamodb-local:latest
+        # Wait for DynamoDB to be ready
+        sleep 5
+        curl -sf http://localhost:8000 || echo "DynamoDB started"
 
     # Backend setup
     - name: Set up Python
@@ -255,11 +258,11 @@ jobs:
         APP_SECRET_KEY: test-secret-key-for-ci-environment-32chars
       run: |
         cd backend
-        # Create local-env.json for SAM
+        # Create local-env.json for SAM - use dynamodb container hostname
         cat > local-env.json << EOF
         {
           "KidsRewardsLambdaFunction": {
-            "DYNAMODB_ENDPOINT_OVERRIDE": "http://localhost:8000",
+            "DYNAMODB_ENDPOINT_OVERRIDE": "http://dynamodb:8000",
             "USERS_TABLE_NAME": "KidsRewardsUsers",
             "STORE_ITEMS_TABLE_NAME": "KidsRewardsStoreItems",
             "PURCHASE_LOGS_TABLE_NAME": "KidsRewardsPurchaseLogs",
@@ -278,8 +281,8 @@ jobs:
         sam local start-api -t template.yaml \
           --env-vars local-env.json \
           --warm-containers LAZY \
-          --docker-network host \
-          --parameter-overrides "AppImageUri=kidsrewardslambdafunction:latest TableNamePrefix=local- LocalDynamoDBEndpoint=http://localhost:8000" \
+          --docker-network e2e-network \
+          --parameter-overrides "AppImageUri=kidsrewardslambdafunction:latest TableNamePrefix=local- LocalDynamoDBEndpoint=http://dynamodb:8000" \
           > backend.log 2>&1 &
         # Wait for backend to be ready
         timeout 60 bash -c 'until curl -sSf http://localhost:3000/hello > /dev/null 2>&1; do echo "Waiting for backend..."; sleep 2; done'
@@ -343,3 +346,6 @@ jobs:
         pkill -f "sam local" || true
         pkill -f "npm start" || true
         pkill -f "react-scripts" || true
+        docker stop dynamodb || true
+        docker rm dynamodb || true
+        docker network rm e2e-network || true
