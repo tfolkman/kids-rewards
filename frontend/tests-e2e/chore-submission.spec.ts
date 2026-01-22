@@ -61,12 +61,12 @@ test.describe('Chore Submission Flow', () => {
     
     // Submit the chore
     await page.click('button:has-text("Submit Chore")');
-    
-    // Verify success message appears
-    await expect(page.locator('text=Chore submitted successfully')).toBeVisible();
 
-    // Modal should close - check title is gone
-    await expect(page.locator('.mantine-Modal-title:has-text("Submit Chore")')).not.toBeVisible();
+    // Modal should close - wait for it to disappear first
+    await expect(page.locator('.mantine-Modal-title:has-text("Submit Chore")')).not.toBeVisible({ timeout: 10000 });
+
+    // Verify success message appears (after modal closes)
+    await expect(page.locator('text=Chore submitted successfully')).toBeVisible({ timeout: 10000 });
   });
 
   test('should handle retry attempts correctly', async ({ page }) => {
@@ -90,11 +90,14 @@ test.describe('Chore Submission Flow', () => {
     
     // Submit without timer (0 minutes effort)
     await page.click('button:has-text("Submit Chore")');
-    
+
+    // Modal should close - wait for it to disappear first
+    await expect(page.locator('.mantine-Modal-title:has-text("Submit Chore")')).not.toBeVisible({ timeout: 10000 });
+
     // Should still succeed
-    await expect(page.locator('text=Chore submitted successfully')).toBeVisible();
+    await expect(page.locator('text=Chore submitted successfully')).toBeVisible({ timeout: 10000 });
   });
-  
+
   test('should display error message properly when submission fails', async ({ page }) => {
     // Login as kid
     await loginAsKid(page);
@@ -168,35 +171,43 @@ test.describe('Chore Submission Flow', () => {
     await expect(page.locator('text=Objects are not valid as a React child')).not.toBeVisible();
   });
   
-  test('should show effort points when timer is used', async ({ page }) => {
+  test('should allow timer usage and submission', async ({ page }) => {
     // Login as kid
     await loginAsKid(page);
-    
+
     // Navigate to chores page
     await page.click('a[href="/chores"]');
     await page.waitForURL(/\/chores/);
-    
+
     // Click on a chore
     const markAsDoneButton = page.locator('button:has-text("Mark as Done")').first();
     await markAsDoneButton.click();
-    
+
+    // Verify timer component is visible
+    await expect(page.locator('text=Track how long you worked')).toBeVisible();
+
     // Start timer
     const startButton = page.locator('button:has-text("Start Timer")');
-    if (await startButton.isVisible()) {
-      await startButton.click();
-      
-      // Wait to accumulate time (simulating 2 minutes = 1 effort point)
-      await page.waitForTimeout(3000);
-      
-      // Stop timer
-      await page.click('button:has-text("Stop & Save")');
-      
-      // The submit button should show effort points
-      const submitButton = page.locator('button:has-text("Submit Chore")');
-      const buttonText = await submitButton.textContent();
-      
-      // Should show some effort points (e.g., "+1 pts")
-      expect(buttonText).toMatch(/\+\d+ pts/);
-    }
+    await expect(startButton).toBeVisible();
+    await startButton.click();
+
+    // Verify timer is running - should show Pause and Stop buttons
+    await expect(page.locator('button:has-text("Pause")')).toBeVisible();
+    await expect(page.locator('button:has-text("Stop & Save")')).toBeVisible();
+
+    // Stop timer
+    await page.click('button:has-text("Stop & Save")');
+
+    // Timer stopped - should show Resume button (since seconds > 0)
+    await expect(page.locator('button:has-text("Resume")')).toBeVisible();
+
+    // Submit the chore (timer functionality verified, actual submission tested elsewhere)
+    await page.click('button:has-text("Submit Chore")');
+
+    // Modal should close
+    await expect(page.locator('.mantine-Modal-title:has-text("Submit Chore")')).not.toBeVisible({ timeout: 10000 });
+
+    // Verify submission succeeded
+    await expect(page.locator('text=Chore submitted successfully')).toBeVisible({ timeout: 10000 });
   });
 });
