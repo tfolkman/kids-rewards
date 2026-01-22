@@ -56,7 +56,7 @@ test.describe('Chore Submission Flow', () => {
       await page.waitForTimeout(2000);
       
       // Stop the timer
-      await page.click('button:has-text("Stop Timer")');
+      await page.click('button:has-text("Stop & Save")');
     }
     
     // Submit the chore
@@ -189,7 +189,7 @@ test.describe('Chore Submission Flow', () => {
       await page.waitForTimeout(3000);
       
       // Stop timer
-      await page.click('button:has-text("Stop Timer")');
+      await page.click('button:has-text("Stop & Save")');
       
       // The submit button should show effort points
       const submitButton = page.locator('button:has-text("Submit Chore")');
