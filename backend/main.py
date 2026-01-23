@@ -523,12 +523,16 @@ async def get_todays_pet_tasks_for_home_assistant(
     Get today's pet care tasks for Home Assistant.
     Requires X-HA-API-Key header.
     """
-    from datetime import date, datetime, time
+    from datetime import datetime, time, timedelta, timezone
 
-    # Get today's date range
-    today = date.today()
-    today_start = datetime.combine(today, time.min)
-    today_end = datetime.combine(today, time.max)
+    # Use Mountain Time (UTC-7) to determine "today"
+    mountain_tz = timezone(timedelta(hours=-7))
+    now_mountain = datetime.now(mountain_tz)
+    today = now_mountain.date()
+
+    # Get today's date range in Mountain Time
+    today_start = datetime.combine(today, time.min, tzinfo=mountain_tz)
+    today_end = datetime.combine(today, time.max, tzinfo=mountain_tz)
 
     # Get all tasks and filter for today
     all_tasks = crud.get_all_pet_care_tasks()
@@ -545,8 +549,8 @@ async def get_todays_pet_tasks_for_home_assistant(
         else:
             status_str = "pending"
 
-        # Check overdue
-        is_overdue = task.due_date < datetime.now() and task.status != models.PetCareTaskStatus.APPROVED
+        # Check overdue (using Mountain Time)
+        is_overdue = task.due_date < now_mountain and task.status != models.PetCareTaskStatus.APPROVED
 
         ha_tasks.append(
             models.HomeAssistantPetTask(
