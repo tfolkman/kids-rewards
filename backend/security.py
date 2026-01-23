@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -64,7 +65,7 @@ def decode_access_token(token: str) -> Optional[str]:
 
 # Home Assistant Integration
 def verify_ha_api_key(api_key: str) -> bool:
-    """Verify Home Assistant API key"""
+    """Verify Home Assistant API key using constant-time comparison to prevent timing attacks"""
     # Read env var dynamically to support test fixtures
     configured_key = os.getenv("HOME_ASSISTANT_API_KEY")
     if not configured_key:
@@ -73,4 +74,5 @@ def verify_ha_api_key(api_key: str) -> bool:
     if len(configured_key) < 32:
         logger.warning("HOME_ASSISTANT_API_KEY too short (must be at least 32 characters)")
         return False
-    return api_key == configured_key
+    # Use constant-time comparison to prevent timing attacks
+    return secrets.compare_digest(api_key, configured_key)
