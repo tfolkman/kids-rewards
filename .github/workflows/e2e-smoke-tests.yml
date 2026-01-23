@@ -176,32 +176,22 @@ jobs:
 
         sam local start-api -t template.yaml \
           --env-vars local-env.json \
+          --warm-containers LAZY \
           --docker-network e2e-network \
-          > /dev/null 2>&1 &
+          > backend.log 2>&1 &
         cd ..
 
-    - name: Wait for services
+    - name: Wait for backend
       run: |
-        # Wait for backend
-        for i in {1..30}; do
-          if curl -sSf http://localhost:3000/hello > /dev/null 2>&1; then
-            break
-          fi
-          sleep 2
-        done
+        timeout 90 bash -c 'until curl -sSf http://localhost:3000/hello > /dev/null 2>&1; do echo "Waiting for backend..."; sleep 2; done'
+        echo "Backend is ready"
 
-        # Start frontend
+    - name: Start frontend
+      run: |
         cd frontend
-        PORT=3001 REACT_APP_API_URL=http://localhost:3000 npm start > /dev/null 2>&1 &
-        cd ..
-
-        # Wait for frontend
-        for i in {1..30}; do
-          if curl -sSf http://localhost:3001 > /dev/null 2>&1; then
-            break
-          fi
-          sleep 2
-        done
+        PORT=3001 REACT_APP_API_URL=http://localhost:3000 npm start > frontend.log 2>&1 &
+        timeout 60 bash -c 'until curl -sSf http://localhost:3001 > /dev/null 2>&1; do echo "Waiting for frontend..."; sleep 2; done'
+        echo "Frontend is ready"
 
     - name: Run smoke test - ${{ matrix.test-file }}
       run: |
@@ -218,6 +208,22 @@ jobs:
         path: |
           frontend/playwright-report/
           frontend/test-results/
+        retention-days: 3
+
+    - name: Upload backend logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: backend-logs-${{ matrix.test-file }}
+        path: backend/backend.log
+        retention-days: 3
+
+    - name: Upload frontend logs
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-logs-${{ matrix.test-file }}
+        path: frontend/frontend.log
         retention-days: 3
 
     # Cleanup
