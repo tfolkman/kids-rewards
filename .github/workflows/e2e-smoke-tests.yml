@@ -67,24 +67,87 @@ jobs:
 
     - name: Setup test environment
       run: |
-        # Quick table creation script
+        # Create tables with correct schemas
+        # Users table uses username as primary key
+        aws dynamodb create-table \
+          --table-name KidsRewardsUsers \
+          --attribute-definitions AttributeName=username,AttributeType=S \
+          --key-schema AttributeName=username,KeyType=HASH \
+          --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1 \
+          --endpoint-url http://localhost:8000 || true
+
+        # Other tables use id as primary key
         cd backend
         python << 'TABLE_SCRIPT'
         import subprocess
-        import time
 
-        tables = ['KidsRewardsUsers', 'KidsRewardsStoreItems', 'KidsRewardsPurchaseLogs',
+        tables = ['KidsRewardsStoreItems', 'KidsRewardsPurchaseLogs',
                   'KidsRewardsChores', 'KidsRewardsChoreLogs', 'KidsRewardsRequests',
                   'KidsRewardsChoreAssignments', 'KidsRewardsPets', 'KidsRewardsPetCareSchedules',
                   'KidsRewardsPetCareTasks', 'KidsRewardsPetHealthLogs']
 
         for table in tables:
-            # Simplified table creation - just the minimum needed for tests
             cmd = f'aws dynamodb create-table --table-name {table} --attribute-definitions AttributeName=id,AttributeType=S --key-schema AttributeName=id,KeyType=HASH --provisioned-throughput ReadCapacityUnits=1,WriteCapacityUnits=1 --endpoint-url http://localhost:8000'
             subprocess.run(cmd, shell=True, capture_output=True)
         print('Tables created')
         TABLE_SCRIPT
-        
+
+        # Seed test data
+        python << 'SEED_SCRIPT'
+        import boto3
+        from passlib.context import CryptContext
+        from datetime import datetime
+        import uuid
+
+        dynamodb = boto3.resource('dynamodb', endpoint_url='http://localhost:8000', region_name='us-east-1')
+        users_table = dynamodb.Table('KidsRewardsUsers')
+        chores_table = dynamodb.Table('KidsRewardsChores')
+
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+        # Create test users
+        users_table.put_item(Item={
+            'id': 'testparent',
+            'username': 'testparent',
+            'hashed_password': pwd_context.hash('password456'),
+            'role': 'parent',
+            'points': 0
+        })
+
+        users_table.put_item(Item={
+            'id': 'testkid',
+            'username': 'testkid',
+            'hashed_password': pwd_context.hash('password123'),
+            'role': 'kid',
+            'points': 100
+        })
+        print('Test users created')
+
+        # Create test chores
+        chores_table.put_item(Item={
+            'id': str(uuid.uuid4()),
+            'name': 'Clean Room',
+            'description': 'Make bed and organize toys',
+            'points_value': 10,
+            'created_by_parent_id': 'testparent',
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
+            'is_active': 'true'
+        })
+
+        chores_table.put_item(Item={
+            'id': str(uuid.uuid4()),
+            'name': 'Do Homework',
+            'description': 'Complete all assignments',
+            'points_value': 15,
+            'created_by_parent_id': 'testparent',
+            'created_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.utcnow().isoformat(),
+            'is_active': 'true'
+        })
+        print('Test chores created')
+        SEED_SCRIPT
+
         # Build SAM
         sam build -t template.yaml
         
