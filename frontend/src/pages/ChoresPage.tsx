@@ -30,10 +30,12 @@ const ChoresPage: React.FC = () => {
   const [choreHistory, setChoreHistory] = useState<ChoreLog[]>([]);
   const [isRetryAttempt, setIsRetryAttempt] = useState(false);
 
-  const fetchAvailableChores = async () => {
+  const fetchAvailableChores = async (clearMessages = true) => {
     setIsLoading(true);
-    setError(null);
-    setSuccessMessage(null);
+    if (clearMessages) {
+      setError(null);
+      setSuccessMessage(null);
+    }
     try {
       const response = await api.getAvailableChores();
       setAvailableChores(response.data.filter(chore => chore.is_active));
@@ -94,8 +96,8 @@ const ChoresPage: React.FC = () => {
       }
       
       setSuccessMessage(message);
-      // Refresh chores and history
-      fetchAvailableChores();
+      // Refresh chores and history (don't clear the success message)
+      fetchAvailableChores(false);
       fetchChoreHistory();
     } catch (err: any) {
       // Handle validation errors from FastAPI which come as an array of error objects
