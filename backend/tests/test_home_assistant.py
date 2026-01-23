@@ -304,12 +304,7 @@ class TestSecurityFunction:
         """RED: API key must be at least 32 characters"""
         os.environ["HOME_ASSISTANT_API_KEY"] = "short-key"
 
-        # Reload to pick up new env var
-        import importlib
-
         import security
-
-        importlib.reload(security)
 
         result = security.verify_ha_api_key("short-key")
         assert result is False
@@ -318,11 +313,7 @@ class TestSecurityFunction:
         """RED: Should handle missing API key gracefully"""
         os.environ.pop("HOME_ASSISTANT_API_KEY", None)
 
-        import importlib
-
         import security
-
-        importlib.reload(security)
 
         result = security.verify_ha_api_key("any-key")
         assert result is False
@@ -332,11 +323,7 @@ class TestSecurityFunction:
         valid_key = "test-key-32-characters-minimum!!"
         os.environ["HOME_ASSISTANT_API_KEY"] = valid_key
 
-        import importlib
-
         import security
-
-        importlib.reload(security)
 
         result = security.verify_ha_api_key(valid_key)
         assert result is True
