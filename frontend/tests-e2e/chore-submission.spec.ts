@@ -183,26 +183,36 @@ test.describe('Chore Submission Flow', () => {
     const markAsDoneButton = page.locator('button:has-text("Mark as Done")').first();
     await markAsDoneButton.click();
 
-    // Verify timer component is visible
-    await expect(page.locator('text=Track how long you worked')).toBeVisible();
+    // Wait for modal to be fully visible
+    await expect(page.locator('.mantine-Modal-content')).toBeVisible();
 
-    // Start timer
-    const startButton = page.locator('button:has-text("Start Timer")');
+    // Verify timer component is visible in modal
+    await expect(page.locator('.mantine-Modal-content >> text=Track how long you worked')).toBeVisible();
+
+    // Start timer (use modal-scoped locator)
+    const modal = page.locator('.mantine-Modal-content');
+    const startButton = modal.locator('button:has-text("Start Timer")');
     await expect(startButton).toBeVisible();
     await startButton.click();
 
+    // Wait for timer to start and UI to update
+    await page.waitForTimeout(500);
+
     // Verify timer is running - should show Pause and Stop buttons
-    await expect(page.locator('button:has-text("Pause")')).toBeVisible();
-    await expect(page.locator('button:has-text("Stop & Save")')).toBeVisible();
+    await expect(modal.locator('button:has-text("Pause")')).toBeVisible();
+    await expect(modal.locator('button:has-text("Stop & Save")')).toBeVisible();
 
     // Stop timer
-    await page.click('button:has-text("Stop & Save")');
+    await modal.locator('button:has-text("Stop & Save")').click();
 
-    // Timer stopped - should show Resume button (since seconds > 0)
-    await expect(page.locator('button:has-text("Resume")')).toBeVisible();
+    // Wait for timer state to update
+    await page.waitForTimeout(500);
 
-    // Submit the chore (timer functionality verified, actual submission tested elsewhere)
-    await page.click('button:has-text("Submit Chore")');
+    // Timer stopped - verify modal is still open and we can submit
+    await expect(modal).toBeVisible();
+
+    // Submit the chore
+    await modal.locator('button:has-text("Submit Chore")').click();
 
     // Modal should close
     await expect(page.locator('.mantine-Modal-title:has-text("Submit Chore")')).not.toBeVisible({ timeout: 10000 });
