@@ -60,3 +60,18 @@ def decode_access_token(token: str) -> Optional[str]:
         return username
     except JWTError:
         return None
+
+
+# Home Assistant Integration
+HOME_ASSISTANT_API_KEY = os.getenv("HOME_ASSISTANT_API_KEY")
+
+
+def verify_ha_api_key(api_key: str) -> bool:
+    """Verify Home Assistant API key"""
+    if not HOME_ASSISTANT_API_KEY:
+        logger.warning("HOME_ASSISTANT_API_KEY not configured")
+        return False
+    if len(HOME_ASSISTANT_API_KEY) < 32:
+        logger.warning("HOME_ASSISTANT_API_KEY too short (must be at least 32 characters)")
+        return False
+    return api_key == HOME_ASSISTANT_API_KEY

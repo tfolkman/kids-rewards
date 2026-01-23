@@ -2037,6 +2037,25 @@ def update_pet_care_task_status(
         return None
 
 
+def get_all_pet_care_tasks() -> list[models.PetCareTask]:
+    """Get all pet care tasks (for HA integration)"""
+    try:
+        response = pet_care_tasks_table.scan()
+        tasks = response.get("Items", [])
+
+        # Handle pagination
+        while "LastEvaluatedKey" in response:
+            response = pet_care_tasks_table.scan(
+                ExclusiveStartKey=response["LastEvaluatedKey"]
+            )
+            tasks.extend(response.get("Items", []))
+
+        return [_deserialize_pet_care_task(task) for task in tasks]
+    except Exception as e:
+        logger.error(f"Error getting all pet care tasks: {e}")
+        return []
+
+
 # --- Pet Health Log CRUD ---
 
 

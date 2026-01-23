@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from fastapi import Depends, FastAPI, HTTPException, status  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, Header, status  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm  # noqa: E402
 from mangum import Mangum  # Import Mangum # noqa: E402
@@ -73,6 +73,23 @@ async def get_current_kid_user(current_user: models.User = Depends(get_current_a
     if current_user.points is None:  # Should always be set for kids, but good to check
         current_user.points = 0  # Initialize if somehow None
     return current_user
+
+
+async def verify_home_assistant_api_key(
+    x_ha_api_key: Optional[str] = Header(None)
+) -> bool:
+    """Verify Home Assistant API key"""
+    if not x_ha_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing X-HA-API-Key header"
+        )
+    if not security.verify_ha_api_key(x_ha_api_key):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Invalid API key"
+        )
+    return True
 
 
 app = FastAPI()
@@ -504,6 +521,71 @@ async def get_leaderboard():
     # Sort users by points (descending), putting users with None points at the end
     sorted_users = sorted(users, key=lambda u: u.points if u.points is not None else -1, reverse=True)
     return sorted_users
+
+
+@app.get("/api/home-assistant/pet-tasks/today", response_model=models.HomeAssistantTasksResponse)
+async def get_todays_pet_tasks_for_home_assistant(
+    authorized: bool = Depends(verify_home_assistant_api_key),  # noqa: B008, ARG001
+):
+    """
+    Get today's pet care tasks for Home Assistant.
+    Requires X-HA-API-Key header.
+    """
+    from datetime import date, datetime, time
+
+    # Get today's date range
+    today = date.today()
+    today_start = datetime.combine(today, time.min)
+    today_end = datetime.combine(today, time.max)
+
+    # Get all tasks and filter for today
+    all_tasks = crud.get_all_pet_care_tasks()
+    todays_tasks = [
+        task for task in all_tasks
+        if today_start <= task.due_date <= today_end
+    ]
+
+    # Transform to HA-friendly format
+    ha_tasks = []
+    for task in todays_tasks:
+        # Map status
+        if task.status == models.PetCareTaskStatus.APPROVED:
+            status_str = "done"
+        elif task.status == models.PetCareTaskStatus.PENDING_APPROVAL:
+            status_str = "awaiting_approval"
+        else:
+            status_str = "pending"
+
+        # Check overdue
+        is_overdue = (
+            task.due_date < datetime.now()
+            and task.status != models.PetCareTaskStatus.APPROVED
+        )
+
+        ha_tasks.append(models.HomeAssistantPetTask(
+            pet_name=task.pet_name,
+            task_name=task.task_name,
+            assigned_to=task.assigned_to_kid_username,
+            due_time=task.due_date.strftime("%H:%M"),
+            status=status_str,
+            points=task.points_value,
+            is_overdue=is_overdue
+        ))
+
+    # Summary
+    summary = {
+        "total": len(ha_tasks),
+        "done": sum(1 for t in ha_tasks if t.status == "done"),
+        "pending": sum(1 for t in ha_tasks if t.status == "pending"),
+        "awaiting_approval": sum(1 for t in ha_tasks if t.status == "awaiting_approval"),
+        "overdue": sum(1 for t in ha_tasks if t.is_overdue)
+    }
+
+    return models.HomeAssistantTasksResponse(
+        today=today.isoformat(),
+        tasks=ha_tasks,
+        summary=summary
+    )
 
 
 @app.get("/health")
