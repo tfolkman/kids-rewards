@@ -2045,12 +2045,10 @@ def get_all_pet_care_tasks() -> list[models.PetCareTask]:
 
         # Handle pagination
         while "LastEvaluatedKey" in response:
-            response = pet_care_tasks_table.scan(
-                ExclusiveStartKey=response["LastEvaluatedKey"]
-            )
+            response = pet_care_tasks_table.scan(ExclusiveStartKey=response["LastEvaluatedKey"])
             tasks.extend(response.get("Items", []))
 
-        return [_deserialize_pet_care_task(task) for task in tasks]
+        return [models.PetCareTask(**replace_decimals(task)) for task in tasks]
     except Exception as e:
         logger.error(f"Error getting all pet care tasks: {e}")
         return []

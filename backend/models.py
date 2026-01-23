@@ -418,6 +418,7 @@ class ChoreAssignmentApprovalRequest(BaseModel):
 # Home Assistant Integration Models
 class HomeAssistantPetTask(BaseModel):
     """Simplified pet care task for Home Assistant"""
+
     pet_name: str
     task_name: str
     assigned_to: str  # Kid's username
@@ -429,6 +430,7 @@ class HomeAssistantPetTask(BaseModel):
 
 class HomeAssistantTasksResponse(BaseModel):
     """Response for HA pet tasks endpoint"""
+
     today: str  # YYYY-MM-DD
     tasks: list[HomeAssistantPetTask]
     summary: dict  # {"total": 3, "done": 1, "pending": 2}
