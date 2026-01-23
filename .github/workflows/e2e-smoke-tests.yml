@@ -12,29 +12,31 @@ jobs:
   smoke-test:
     runs-on: ubuntu-latest
     timeout-minutes: 15 # Shorter timeout for smoke tests
-    
+
     # Only run the critical path tests
     strategy:
       matrix:
-        test-file: 
+        test-file:
           - "chore-submission.spec.ts"
           # Add other critical test files here as they're created
-    
-    services:
-      dynamodb:
-        image: amazon/dynamodb-local:latest
-        ports:
-          - 8000:8000
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
+    # Create Docker network and start DynamoDB (same approach as full E2E)
+    - name: Start DynamoDB Local
+      run: |
+        docker network create e2e-network
+        docker run -d --name dynamodb --network e2e-network -p 8000:8000 amazon/dynamodb-local:latest
+        sleep 5
+        curl -sf http://localhost:8000 || echo "DynamoDB started"
+
     - name: Setup Python and Node
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-        
+
     - uses: actions/setup-node@v4
       with:
         node-version: '20'
@@ -53,13 +55,13 @@ jobs:
         # Backend deps
         pip install -r backend/requirements.txt
         pip install aws-sam-cli
-        
+
         # Frontend deps
         cd frontend && npm ci && cd ..
-        
+
         # Only install Chromium for speed
         cd frontend && npx playwright install chromium && cd ..
-        
+
         # AWS config for DynamoDB local
         aws configure set aws_access_key_id test
         aws configure set aws_secret_access_key test
@@ -150,12 +152,12 @@ jobs:
 
         # Build SAM
         sam build -t template.yaml
-        
-        # Start backend
+
+        # Start backend with Docker network for DynamoDB access
         cat > local-env.json << EOF
         {
           "KidsRewardsLambdaFunction": {
-            "DYNAMODB_ENDPOINT_OVERRIDE": "http://localhost:8000",
+            "DYNAMODB_ENDPOINT_OVERRIDE": "http://dynamodb:8000",
             "USERS_TABLE_NAME": "KidsRewardsUsers",
             "STORE_ITEMS_TABLE_NAME": "KidsRewardsStoreItems",
             "PURCHASE_LOGS_TABLE_NAME": "KidsRewardsPurchaseLogs",
@@ -171,8 +173,11 @@ jobs:
           }
         }
         EOF
-        
-        sam local start-api -t template.yaml --env-vars local-env.json > /dev/null 2>&1 &
+
+        sam local start-api -t template.yaml \
+          --env-vars local-env.json \
+          --docker-network e2e-network \
+          > /dev/null 2>&1 &
         cd ..
 
     - name: Wait for services
@@ -184,12 +189,12 @@ jobs:
           fi
           sleep 2
         done
-        
+
         # Start frontend
         cd frontend
         PORT=3001 REACT_APP_API_URL=http://localhost:3000 npm start > /dev/null 2>&1 &
         cd ..
-        
+
         # Wait for frontend
         for i in {1..30}; do
           if curl -sSf http://localhost:3001 > /dev/null 2>&1; then
@@ -214,3 +219,13 @@ jobs:
           frontend/playwright-report/
           frontend/test-results/
         retention-days: 3
+
+    # Cleanup
+    - name: Stop services
+      if: always()
+      run: |
+        pkill -f "sam local" || true
+        pkill -f "npm start" || true
+        docker stop dynamodb || true
+        docker rm dynamodb || true
+        docker network rm e2e-network || true
