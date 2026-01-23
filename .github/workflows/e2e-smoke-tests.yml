@@ -178,6 +178,7 @@ jobs:
           --env-vars local-env.json \
           --warm-containers LAZY \
           --docker-network e2e-network \
+          --parameter-overrides "AppImageUri=kidsrewardslambdafunction:latest TableNamePrefix=local- LocalDynamoDBEndpoint=http://dynamodb:8000" \
           > backend.log 2>&1 &
         cd ..
 
