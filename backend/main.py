@@ -530,9 +530,10 @@ async def get_todays_pet_tasks_for_home_assistant(
     now_mountain = datetime.now(mountain_tz)
     today = now_mountain.date()
 
-    # Get today's date range in Mountain Time
-    today_start = datetime.combine(today, time.min, tzinfo=mountain_tz)
-    today_end = datetime.combine(today, time.max, tzinfo=mountain_tz)
+    # Get today's date range (naive datetimes to match DynamoDB storage)
+    # Tasks are stored as naive datetimes in DynamoDB
+    today_start = datetime.combine(today, time.min)
+    today_end = datetime.combine(today, time.max)
 
     # Get all tasks and filter for today
     all_tasks = crud.get_all_pet_care_tasks()
@@ -549,8 +550,9 @@ async def get_todays_pet_tasks_for_home_assistant(
         else:
             status_str = "pending"
 
-        # Check overdue (using Mountain Time)
-        is_overdue = task.due_date < now_mountain and task.status != models.PetCareTaskStatus.APPROVED
+        # Check overdue (using Mountain Time, converted to naive for comparison)
+        now_naive = now_mountain.replace(tzinfo=None)
+        is_overdue = task.due_date < now_naive and task.status != models.PetCareTaskStatus.APPROVED
 
         ha_tasks.append(
             models.HomeAssistantPetTask(
