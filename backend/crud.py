@@ -1950,9 +1950,14 @@ def get_all_tasks_scan_fallback() -> List[models.PetCareTask]:  # noqa: UP006
         return []
 
 
-def submit_pet_care_task(
+def submit_pet_care_task(  # noqa: C901
     task_id: str, kid_user: models.User, notes: Optional[str] = None
 ) -> Optional[models.PetCareTask]:
+    """
+    Submit a pet care task.
+    Auto-approves and awards points immediately for "Feed Spike" tasks.
+    Other tasks go to PENDING_APPROVAL.
+    """
     task = get_task_by_id(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found.")
@@ -1964,11 +1969,23 @@ def submit_pet_care_task(
         raise HTTPException(status_code=400, detail=f"Task is not in assigned status. Current status: {task.status}")
 
     submitted_at_ts = datetime.utcnow()
-    try:
-        update_expression = "SET #s = :s, submitted_at = :sat"
+
+    # Check if this is a Spike feeding task (auto-approve)
+    is_spike_feeding = task.task_name == "Feed Spike"
+
+    if is_spike_feeding:
+        # AUTO-APPROVE: Award points immediately and mark as approved
+        reviewed_at_ts = submitted_at_ts
+
+        # Award points with streak bonus (existing function)
+        _award_points_and_streak_bonus(kid_user.username, task.points_value)
+
+        # Update task: ASSIGNED → APPROVED (skip PENDING_APPROVAL)
+        update_expression = "SET #s = :s, submitted_at = :sat, reviewed_at = :rat"
         expression_attribute_values = {
-            ":s": models.PetCareTaskStatus.PENDING_APPROVAL.value,
+            ":s": models.PetCareTaskStatus.APPROVED.value,
             ":sat": submitted_at_ts.isoformat(),
+            ":rat": reviewed_at_ts.isoformat(),
             ":kid_id": kid_user.username,
         }
 
@@ -1976,23 +1993,56 @@ def submit_pet_care_task(
             update_expression += ", submission_notes = :notes"
             expression_attribute_values[":notes"] = notes
 
-        response = pet_care_tasks_table.update_item(
-            Key={"id": task_id},
-            UpdateExpression=update_expression,
-            ExpressionAttributeNames={"#s": "status"},
-            ExpressionAttributeValues=expression_attribute_values,
-            ConditionExpression="assigned_to_kid_id = :kid_id",
-            ReturnValues="ALL_NEW",
-        )
-        updated_attributes = response.get("Attributes")
-        if updated_attributes:
-            return models.PetCareTask(**replace_decimals(updated_attributes))
-        return None
-    except ClientError as e:
-        if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
-            raise HTTPException(status_code=403, detail="Not authorized to submit this task.") from e
-        print(f"Error submitting task {task_id}: {e}")
-        return None
+        try:
+            response = pet_care_tasks_table.update_item(
+                Key={"id": task_id},
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues=expression_attribute_values,
+                ConditionExpression="assigned_to_kid_id = :kid_id",
+                ReturnValues="ALL_NEW",
+            )
+            updated_attributes = response.get("Attributes")
+            if updated_attributes:
+                return models.PetCareTask(**replace_decimals(updated_attributes))
+            return None
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise HTTPException(status_code=403, detail="Not authorized to submit this task.") from e
+            print(f"Error auto-approving Spike feeding task {task_id}: {e}")
+            return None
+
+    else:
+        # NORMAL FLOW: Go to PENDING_APPROVAL (existing behavior for other tasks)
+        try:
+            update_expression = "SET #s = :s, submitted_at = :sat"
+            expression_attribute_values = {
+                ":s": models.PetCareTaskStatus.PENDING_APPROVAL.value,
+                ":sat": submitted_at_ts.isoformat(),
+                ":kid_id": kid_user.username,
+            }
+
+            if notes is not None:
+                update_expression += ", submission_notes = :notes"
+                expression_attribute_values[":notes"] = notes
+
+            response = pet_care_tasks_table.update_item(
+                Key={"id": task_id},
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues=expression_attribute_values,
+                ConditionExpression="assigned_to_kid_id = :kid_id",
+                ReturnValues="ALL_NEW",
+            )
+            updated_attributes = response.get("Attributes")
+            if updated_attributes:
+                return models.PetCareTask(**replace_decimals(updated_attributes))
+            return None
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                raise HTTPException(status_code=403, detail="Not authorized to submit this task.") from e
+            print(f"Error submitting task {task_id}: {e}")
+            return None
 
 
 def update_pet_care_task_status(

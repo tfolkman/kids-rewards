@@ -7,9 +7,9 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.main import (
-    app,  # Corrected import: Assuming FastAPI app is in main.py at the root of the backend directory
-)
+import main
+
+app = main.app
 
 # Calculate the project root (two levels up from backend/tests/conftest.py)
 # and add it to sys.path.
