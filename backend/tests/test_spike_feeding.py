@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from models import PetCareTaskStatus
 from pet_care import generate_spike_feeding_tasks, get_spike_feeding_assigned_kid
 
 
