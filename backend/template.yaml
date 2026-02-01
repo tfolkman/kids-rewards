@@ -462,9 +462,11 @@ Resources:
     Properties:
       PackageType: Image
       ImageUri: !Ref AppImageUri
+      ImageConfig:
+        Command:
+          - daily_tasks.lambda_handler
       Architectures:
         - x86_64
-      Handler: daily_tasks.lambda_handler
       Timeout: 60
       MemorySize: 256
       Events:
