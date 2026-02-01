@@ -8,7 +8,7 @@ This module provides:
 - Task generation for care schedules
 """
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 from typing import Optional
 
 import models
@@ -360,7 +360,9 @@ def generate_spike_feeding_tasks(
         existing_task_dates = set()
 
     if start_date is None:
-        start_date = datetime.utcnow()
+        # Use Mountain Time (UTC-7) to determine "today"
+        mountain_tz = timezone(timedelta(hours=-7))
+        start_date = datetime.now(mountain_tz)
 
     tasks = []
     base_date = start_date.date()
