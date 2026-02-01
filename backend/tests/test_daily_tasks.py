@@ -253,10 +253,10 @@ class TestDailyTaskGeneration:
         mock_get_pets.return_value = [spike_upper]
 
         # Should find Spike despite case difference
-        with patch("crud.get_tasks_by_pet_id") as mock_get_tasks, patch(
-            "crud.create_pet_care_task"
-        ) as mock_create_task:
-
+        with (
+            patch("crud.get_tasks_by_pet_id") as mock_get_tasks,
+            patch("crud.create_pet_care_task") as mock_create_task,
+        ):
             mock_get_tasks.return_value = []
 
             def create_task_side_effect(task_create):
