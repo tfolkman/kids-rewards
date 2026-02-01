@@ -73,5 +73,5 @@ jobs:
             --s3-bucket ${{ secrets.SAM_S3_BUCKET_NAME }} \
             --s3-prefix ${{ env.SAM_STACK_NAME }}/sam-artifacts \
             --no-fail-on-empty-changeset \
-            --image-repositories KidsRewardsLambdaFunction=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
+            --image-repositories KidsRewardsLambdaFunction=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} DailySpikeTaskGeneratorFunction=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
             --parameter-overrides AppImageUri=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} AppSecret=${{ secrets.APP_SECRET_KEY }} HomeAssistantApiKey=${{ secrets.HOME_ASSISTANT_API_KEY }}
