@@ -1330,6 +1330,64 @@ async def reject_pet_care_task_submission(
     return rejected_task
 
 
+@app.post("/parent/pets/spike/generate-feeding-tasks", response_model=dict)
+async def generate_spike_feeding_tasks_endpoint(
+    days_ahead: int = 7,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Generate Spike feeding tasks for the next N days using hard-coded weekly pattern.
+
+    Pattern: Thu=aiden, Fri=clara, Sat=emery, Sun=aiden, Mon=clara, Tue=emery, Wed=aiden
+
+    Parent-only endpoint. Auto-skips dates that already have tasks.
+    """
+    # Get all parent's pets
+    parent_pets = crud.get_pets_by_parent_id(current_parent.id)
+
+    # Find Spike (case-insensitive)
+    spike = None
+    for pet in parent_pets:
+        if pet.name.lower() == "spike":
+            spike = pet
+            break
+
+    if not spike:
+        raise HTTPException(
+            status_code=404, detail="Spike not found in your pets. Please create Spike's profile first."
+        )
+
+    # Get existing "Feed Spike" task dates to avoid duplicates
+    all_spike_tasks = crud.get_tasks_by_pet_id(spike.id)
+    existing_dates = {task.due_date.date() for task in all_spike_tasks if task.task_name == "Feed Spike"}
+
+    # Generate new tasks
+    from pet_care import generate_spike_feeding_tasks
+
+    new_tasks = generate_spike_feeding_tasks(
+        pet_id=spike.id,
+        pet_name=spike.name,
+        parent_id=current_parent.id,
+        days_ahead=days_ahead,
+        existing_task_dates=existing_dates,
+    )
+
+    # Save to database
+    created_count = 0
+    for task_create in new_tasks:
+        created_task = crud.create_pet_care_task(task_create)
+        if created_task:
+            created_count += 1
+
+    return {
+        "message": f"Generated {created_count} Spike feeding task(s)",
+        "tasks_created": created_count,
+        "days_ahead": days_ahead,
+        "pet_id": spike.id,
+        "pet_name": spike.name,
+    }
+
+
 # Pet Health Logs
 @app.post("/pets/{pet_id}/health-logs/", response_model=models.PetHealthLog, status_code=status.HTTP_201_CREATED)
 async def create_pet_health_log(

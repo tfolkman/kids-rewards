@@ -304,3 +304,92 @@ def generate_tasks_for_schedule(
             rotation_index += 1
 
     return tasks
+
+
+def get_spike_feeding_assigned_kid(task_date: datetime) -> str:
+    """
+    Returns the username of the kid assigned to feed Spike on a given date.
+
+    Simple rotating pattern starting from a reference Thursday (Jan 29, 2026):
+    - Rotates through: aiden → clara → emery → aiden → ...
+    - Pattern starts on Thursday Jan 29, 2026 with aiden
+
+    Args:
+        task_date: The date of the task (datetime object)
+
+    Returns:
+        Kid's username ("aiden", "clara", or "emery")
+    """
+    # Reference point: Thursday, January 29, 2026 = aiden (day 0)
+    reference_date = datetime(2026, 1, 29).date()
+    task_date_only = task_date.date()
+
+    # Calculate days since reference
+    days_since_reference = (task_date_only - reference_date).days
+
+    # Simple 3-person rotation
+    kids = ["aiden", "clara", "emery"]
+    rotation_index = days_since_reference % 3
+
+    return kids[rotation_index]
+
+
+def generate_spike_feeding_tasks(
+    pet_id: str,
+    pet_name: str,
+    parent_id: str,
+    days_ahead: int = 7,
+    start_date: Optional[datetime] = None,
+    existing_task_dates: Optional[set] = None,
+) -> list[models.PetCareTaskCreate]:
+    """
+    Generate Spike feeding tasks using hard-coded weekly assignment pattern.
+
+    Args:
+        pet_id: Spike's pet ID from database
+        pet_name: "Spike"
+        parent_id: Parent who owns Spike
+        days_ahead: Number of days to generate tasks for (default 7)
+        start_date: Starting date (default: today in UTC)
+        existing_task_dates: Set of date objects that already have tasks (skip these)
+
+    Returns:
+        List of PetCareTaskCreate objects ready to insert
+    """
+    if existing_task_dates is None:
+        existing_task_dates = set()
+
+    if start_date is None:
+        start_date = datetime.utcnow()
+
+    tasks = []
+    base_date = start_date.date()
+
+    for day_offset in range(days_ahead):
+        task_date = base_date + timedelta(days=day_offset)
+
+        # Skip if task already exists for this date
+        if task_date in existing_task_dates:
+            continue
+
+        # Get assigned kid using hard-coded pattern
+        assigned_kid = get_spike_feeding_assigned_kid(datetime.combine(task_date, datetime.min.time()))
+
+        # Create task due at 6:00 PM
+        due_datetime = datetime.combine(task_date, time(18, 0))
+
+        task = models.PetCareTaskCreate(
+            schedule_id="spike-feeding-auto",  # Special marker for auto-generated
+            pet_id=pet_id,
+            pet_name=pet_name,
+            task_name="Feed Spike",
+            description="Feed Spike his daily meal",
+            points_value=10,
+            assigned_to_kid_id=assigned_kid,  # NOTE: This field stores username!
+            assigned_to_kid_username=assigned_kid,
+            due_date=due_datetime,
+        )
+
+        tasks.append(task)
+
+    return tasks
