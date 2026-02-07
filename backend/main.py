@@ -75,26 +75,30 @@ async def get_current_kid_user(current_user: models.User = Depends(get_current_a
     return current_user
 
 
-app = FastAPI()
+app = FastAPI(title="Kids Rewards API", version="1.0.0")
 
 # --- CORS Middleware ---
 origins = [
-    "http://localhost:3000",  # React default dev port
-    "http://localhost:3001",  # Frontend dev server port
-    "http://localhost:3000",  # Backend server port
+    "http://localhost:3000",
+    "http://localhost:3001",
     "https://main.dd0mqanef4wnt.amplifyapp.com",
     "https://monkeypoints.shop",
-    "https://www.monkeypoints.shop",  # Deployed Amplify frontend
-    # Add other domains here
+    "https://www.monkeypoints.shop",
 ]
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
+
+# --- Response Envelope Middleware ---
+from envelope import EnvelopeMiddleware, register_exception_handlers  # noqa: E402
+
+app.add_middleware(EnvelopeMiddleware)
+register_exception_handlers(app)
 
 # --- Endpoints ---
 
