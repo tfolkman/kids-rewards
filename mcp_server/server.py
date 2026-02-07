@@ -44,9 +44,11 @@ async def _get(path: str, params: dict | None = None) -> str:
         return _fmt({"success": False, "error": {"code": "CONNECTION_ERROR", "message": str(exc)}})
 
 
-async def _post(path: str, json_data: dict | None = None, data: dict | None = None) -> str:
+async def _post(
+    path: str, json_data: dict | None = None, data: dict | None = None, params: dict | None = None
+) -> str:
     try:
-        r = await _client.post(path, headers=_headers(), json=json_data, data=data)
+        r = await _client.post(path, headers=_headers(), json=json_data, data=data, params=params)
         logger.info("POST %s -> %d", path, r.status_code)
         return _fmt(r.json())
     except httpx.HTTPError as exc:
@@ -403,19 +405,22 @@ async def reject_chore_submission(log_id: str, reason: str = "") -> str:
 
 @mcp.tool()
 async def create_assignment(
-    chore_id: str, kid_username: str, due_date: Optional[str] = None, notes: str = ""
+    chore_id: str, assigned_to_kid_id: str, due_date: str, notes: str = ""
 ) -> str:
     """Assign a specific chore to a kid. Parent-only.
 
     Args:
         chore_id: ID of the chore to assign.
-        kid_username: Username of the kid to assign it to.
-        due_date: Optional deadline in YYYY-MM-DD format.
+        assigned_to_kid_id: Username of the kid to assign it to.
+        due_date: Deadline in YYYY-MM-DD format (required).
         notes: Optional instructions or context.
     """
-    payload = {"chore_id": chore_id, "kid_username": kid_username, "notes": notes}
-    if due_date:
-        payload["due_date"] = due_date
+    payload = {
+        "chore_id": chore_id,
+        "assigned_to_kid_id": assigned_to_kid_id,
+        "due_date": due_date,
+        "notes": notes,
+    }
     return await _post("/parent/chore-assignments/", json_data=payload)
 
 
@@ -435,14 +440,17 @@ async def get_my_assignments(status: Optional[str] = None, limit: int = 100, off
 
 
 @mcp.tool()
-async def submit_assignment(assignment_id: str, notes: str = "") -> str:
+async def submit_assignment(assignment_id: str, submission_notes: str = "") -> str:
     """Submit an assigned chore as completed. Kid action.
 
     Args:
         assignment_id: ID of the assignment to submit.
-        notes: Optional notes about the completion.
+        submission_notes: Optional notes about the completion.
     """
-    return await _post(f"/kids/my-assignments/{assignment_id}/submit", json_data={"notes": notes})
+    return await _post(
+        f"/chore-assignments/{assignment_id}/submit",
+        json_data={"submission_notes": submission_notes},
+    )
 
 
 @mcp.tool()
@@ -529,17 +537,22 @@ async def reject_purchase(log_id: str) -> str:
 
 
 @mcp.tool()
-async def create_request(request_type: str, title: str, description: str = "") -> str:
+async def create_request(request_type: str, details: str) -> str:
     """Create a feature or item request. Kid action.
 
     Args:
-        request_type: Type of request - 'chore' or 'store_item'.
-        title: Short title for the request.
-        description: Detailed description of what's being requested.
+        request_type: Type of request - 'add_store_item', 'add_chore', or 'other'.
+        details: JSON string with request specifics, e.g. '{"name": "New Item", "points_cost": 100}'.
     """
+    import json as _json
+
+    try:
+        details_dict = _json.loads(details)
+    except _json.JSONDecodeError:
+        details_dict = {"description": details}
     return await _post(
         "/requests/",
-        json_data={"request_type": request_type, "title": title, "description": description},
+        json_data={"request_type": request_type, "details": details_dict},
     )
 
 
@@ -689,33 +702,40 @@ async def get_recommended_schedules(pet_id: str) -> str:
 @mcp.tool()
 async def create_schedule(
     pet_id: str,
-    care_type: str,
+    task_name: str,
     frequency: str,
     assigned_kid_ids: list[str],
-    task_name: str = "",
     points_value: int = 5,
+    description: Optional[str] = None,
+    day_of_week: Optional[int] = None,
+    due_by_time: Optional[str] = None,
 ) -> str:
     """Create a recurring pet care schedule. Parent-only.
 
     Args:
         pet_id: ID of the pet this schedule is for.
-        care_type: Type of care - 'feeding', 'cleaning', 'exercise', etc.
-        frequency: How often - 'daily', 'weekly', etc.
+        task_name: Name for the care task (e.g. 'Feed Gecko', 'Clean Tank').
+        frequency: How often - 'daily' or 'weekly'.
         assigned_kid_ids: List of kid usernames to rotate through.
-        task_name: Custom name for generated tasks.
-        points_value: Points awarded per completed task.
+        points_value: Points awarded per completed task (default 5).
+        description: Optional detailed instructions.
+        day_of_week: For weekly tasks, 0=Monday through 6=Sunday.
+        due_by_time: Optional deadline time in HH:MM format (e.g. '10:00').
     """
-    return await _post(
-        "/pets/schedules/",
-        json_data={
-            "pet_id": pet_id,
-            "care_type": care_type,
-            "frequency": frequency,
-            "assigned_kid_ids": assigned_kid_ids,
-            "task_name": task_name,
-            "points_value": points_value,
-        },
-    )
+    payload: dict = {
+        "pet_id": pet_id,
+        "task_name": task_name,
+        "frequency": frequency,
+        "assigned_kid_ids": assigned_kid_ids,
+        "points_value": points_value,
+    }
+    if description is not None:
+        payload["description"] = description
+    if day_of_week is not None:
+        payload["day_of_week"] = day_of_week
+    if due_by_time is not None:
+        payload["due_by_time"] = due_by_time
+    return await _post("/pets/schedules/", json_data=payload)
 
 
 @mcp.tool()
@@ -739,14 +759,17 @@ async def deactivate_schedule(schedule_id: str) -> str:
 
 
 @mcp.tool()
-async def generate_tasks(schedule_id: str, days: int = 7) -> str:
+async def generate_tasks(schedule_id: str, days_ahead: int = 7) -> str:
     """Generate pet care task instances from a schedule.
 
     Args:
         schedule_id: ID of the schedule to generate tasks from.
-        days: Number of days ahead to generate tasks for (default 7).
+        days_ahead: Number of days ahead to generate tasks for (default 7).
     """
-    return await _post(f"/pets/schedules/{schedule_id}/generate-tasks", json_data={"days": days})
+    return await _post(
+        f"/pets/schedules/{schedule_id}/generate-tasks",
+        params={"days_ahead": days_ahead},
+    )
 
 
 # ── Pet Tasks ─────────────────────────────────────────────────
