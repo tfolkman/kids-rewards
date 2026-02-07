@@ -223,10 +223,16 @@ async def create_store_item(
 
 @app.get("/store/items/")
 async def read_store_items(
+    sort: Optional[str] = Query(None, description="Sort field: points_cost, name"),
+    order: Optional[str] = Query("asc", description="Sort order: asc, desc"),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
 ):
     items = crud.get_store_items()
+    if sort == "points_cost":
+        items.sort(key=lambda x: x.points_cost or 0, reverse=(order == "desc"))
+    elif sort == "name":
+        items.sort(key=lambda x: (x.name or "").lower(), reverse=(order == "desc"))
     return paginated_response(items, limit, offset)
 
 
@@ -1532,4 +1538,27 @@ async def get_my_chore_stats(
         "retry_count": retry_count,
         "high_effort_count": high_effort,
         "average_effort_minutes": round(total_effort_minutes / total_submitted, 1) if total_submitted else 0,
+    }
+
+
+@app.get("/config/points-rules")
+async def get_points_rules():
+    return {
+        "effort_points": {
+            "rate": 0.5,
+            "max": 10,
+            "formula": "min(floor(minutes * 0.5), 10)",
+        },
+        "streak_milestones": [
+            {"days": 3, "bonus_points": 10},
+            {"days": 7, "bonus_points": 25},
+            {"days": 14, "bonus_points": 50},
+            {"days": 30, "bonus_points": 100},
+        ],
+        "suggested_pricing": {
+            "shop_item_rate": 35,
+            "shop_item_formula": "round(usd_price * 35)",
+            "chore_rate": 3,
+            "chore_formula": "round(time_estimate_minutes * 3)",
+        },
     }
