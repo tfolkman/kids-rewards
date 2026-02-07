@@ -20,7 +20,6 @@ def test_server_loads_all_tools():
         "submit_chore",
         "approve_chore_submission",
         "create_pet",
-        "get_points_rules",
     ]
     for name in expected:
         assert name in tools, f"Missing tool: {name}"
@@ -30,6 +29,11 @@ def test_tool_descriptions_exist():
     tools = asyncio.run(mcp._tool_manager.get_tools())
     for name, tool in tools.items():
         assert tool.description, f"Tool {name} has no description"
+
+
+def test_points_rules_is_resource():
+    resources = asyncio.run(mcp._resource_manager.get_resources())
+    assert "config://points-rules" in resources
 
 
 def test_login_tool_has_required_params():
