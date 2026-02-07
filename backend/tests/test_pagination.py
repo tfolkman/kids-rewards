@@ -5,8 +5,6 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from unittest.mock import patch
 
-from helpers import assert_envelope
-
 
 class TestPagination:
     @patch("crud.get_store_items")
