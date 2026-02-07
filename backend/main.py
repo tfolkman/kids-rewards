@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from fastapi import Depends, FastAPI, HTTPException, status  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, Query, status  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm  # noqa: E402
 from mangum import Mangum  # Import Mangum # noqa: E402
@@ -95,10 +95,20 @@ app.add_middleware(
 )
 
 # --- Response Envelope Middleware ---
-from envelope import EnvelopeMiddleware, register_exception_handlers  # noqa: E402
+from envelope import EnvelopeMiddleware, register_exception_handlers, success_response  # noqa: E402
 
 app.add_middleware(EnvelopeMiddleware)
 register_exception_handlers(app)
+
+
+def paginated_response(items: list, limit: int, offset: int, total: int | None = None):
+    total = total if total is not None else len(items)
+    page = items[offset : offset + limit]
+    return success_response(
+        page,
+        meta={"count": len(page), "total": total, "limit": limit, "offset": offset},
+    )
+
 
 # --- Endpoints ---
 
@@ -211,10 +221,13 @@ async def create_store_item(
     return crud.create_store_item(item_in=item)
 
 
-@app.get("/store/items/", response_model=list[models.StoreItem])
-async def read_store_items(skip: int = 0, limit: int = 100):
+@app.get("/store/items/")
+async def read_store_items(
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
     items = crud.get_store_items()
-    return items[skip : skip + limit]
+    return paginated_response(items, limit, offset)
 
 
 @app.get("/store/items/{item_id}", response_model=models.StoreItem)
@@ -327,12 +340,17 @@ async def delete_existing_chore(
 # --- Chore Interaction Endpoints (Kid & General) ---
 
 
-@app.get("/chores/", response_model=List[models.Chore])  # noqa: UP006
-async def get_available_chores():
-    """
-    Get all active and available chores.
-    """
-    return crud.get_all_active_chores()
+@app.get("/chores/")
+async def get_available_chores(
+    include_inactive: bool = Query(False),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    if include_inactive:
+        items = crud.get_all_chores_scan_fallback()
+    else:
+        items = crud.get_all_active_chores()
+    return paginated_response(items, limit, offset)
 
 
 @app.get("/chores/{chore_id}", response_model=models.Chore)
@@ -375,15 +393,17 @@ async def submit_chore_completion(
     return chore_log
 
 
-@app.get("/chores/history/me", response_model=List[models.ChoreLog])  # noqa: UP006
+@app.get("/chores/history/me")
 async def get_my_chore_history(
     current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+    chore_status: Optional[str] = Query(None, alias="status"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
-    """
-    Kid retrieves their own chore history.
-    """
-    # Assumes GSI 'KidChoreLogIndex' or scan fallback in crud
-    return crud.get_chore_logs_by_kid_id(kid_id=current_kid.id)
+    items = crud.get_chore_logs_by_kid_id(kid_id=current_kid.id)
+    if chore_status:
+        items = [i for i in items if i.status == chore_status]
+    return paginated_response(items, limit, offset)
 
 
 class ChoreLogWithStreakBonus(models.ChoreLog):
@@ -538,16 +558,17 @@ async def hello_world():
     return response  # FastAPI will handle status and headers correctly with middleware
 
 
-@app.get("/users/me/purchase-history", response_model=List[models.PurchaseLog])  # noqa: UP006
-async def read_my_purchase_history(current_user: models.User = Depends(get_current_active_user)):  # noqa: B008
-    """
-    Retrieve the purchase history for the currently authenticated user.
-    """
-    # Uses the GSI 'UserIdTimestampIndex' if available, otherwise falls back to scan.
-    # Sorted by timestamp descending (newest first) by default in crud.get_purchase_logs_by_user_id
-    # or by client-side sort in get_all_purchase_logs fallback.
-    history = crud.get_purchase_logs_by_user_id(user_id=current_user.id)
-    return history
+@app.get("/users/me/purchase-history")
+async def read_my_purchase_history(
+    current_user: models.User = Depends(get_current_active_user),  # noqa: B008
+    purchase_status: Optional[str] = Query(None, alias="status"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+):
+    items = crud.get_purchase_logs_by_user_id(user_id=current_user.id)
+    if purchase_status:
+        items = [i for i in items if i.status == purchase_status]
+    return paginated_response(items, limit, offset)
 
 
 @app.get("/kids/bearded-dragon-purchases", response_model=List[models.PurchaseLog])  # noqa: UP006
@@ -780,17 +801,20 @@ async def create_feature_request(
     return created_request
 
 
-@app.get("/requests/me/", response_model=List[models.Request])  # noqa: UP006
+@app.get("/requests/me/")
 async def get_my_feature_requests(
     current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+    request_status: Optional[str] = Query(None, alias="status"),
+    request_type: Optional[str] = Query(None, alias="type"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
-    """
-    Kid retrieves their own submitted feature requests.
-    """
-    logger.info(f"Fetching feature requests for user {current_kid.username} (ID: {current_kid.id})")
-    requests = crud.get_requests_by_requester_id(requester_id=current_kid.id)
-    logger.info(f"Found {len(requests)} feature requests for user {current_kid.username}")
-    return requests
+    items = crud.get_requests_by_requester_id(requester_id=current_kid.id)
+    if request_status:
+        items = [i for i in items if i.status == request_status]
+    if request_type:
+        items = [i for i in items if i.request_type == request_type]
+    return paginated_response(items, limit, offset)
 
 
 @app.get("/parent/requests/pending/", response_model=List[models.Request])  # noqa: UP006
@@ -896,14 +920,17 @@ async def assign_chore_to_kid(
 
 
 # Kid - Get assigned chores
-@app.get("/kids/my-assignments/", response_model=List[models.ChoreAssignment])  # noqa: UP006
+@app.get("/kids/my-assignments/")
 async def get_my_assigned_chores(
     current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+    assignment_status: Optional[str] = Query(None, alias="status"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
-    """
-    Kid retrieves their assigned chores.
-    """
-    return crud.get_assignments_by_kid_id(kid_id=current_kid.username)
+    items = crud.get_assignments_by_kid_id(kid_id=current_kid.username)
+    if assignment_status:
+        items = [i for i in items if i.assignment_status == assignment_status]
+    return paginated_response(items, limit, offset)
 
 
 # Kid - Get streak data
@@ -1198,12 +1225,17 @@ async def generate_pet_care_tasks(
 
 
 # Pet Care Tasks - Kid and Parent
-@app.get("/kids/my-pet-tasks/", response_model=List[models.PetCareTask])  # noqa: UP006
+@app.get("/kids/my-pet-tasks/")
 async def get_my_pet_tasks(
     current_kid: models.User = Depends(get_current_kid_user),  # noqa: B008
+    task_status: Optional[str] = Query(None, alias="status"),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
-    """Kid retrieves their assigned pet care tasks."""
-    return crud.get_tasks_by_kid_id(kid_id=current_kid.username)
+    items = crud.get_tasks_by_kid_id(kid_id=current_kid.username)
+    if task_status:
+        items = [i for i in items if i.status == task_status]
+    return paginated_response(items, limit, offset)
 
 
 @app.get("/pets/{pet_id}/tasks/", response_model=List[models.PetCareTask])  # noqa: UP006
@@ -1411,11 +1443,17 @@ async def get_schedule(
 # --- API-First: Admin/System endpoints ---
 
 
-@app.get("/users/", response_model=List[models.User])  # noqa: UP006
+@app.get("/users/")
 async def list_users(
     current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+    role: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
 ):
-    return crud.get_all_users()
+    items = crud.get_all_users()
+    if role:
+        items = [u for u in items if u.role == role]
+    return paginated_response(items, limit, offset)
 
 
 # --- API-First: Dashboard endpoints ---
