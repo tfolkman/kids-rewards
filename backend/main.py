@@ -86,7 +86,13 @@ async def verify_home_assistant_api_key(x_ha_api_key: Optional[str] = Header(Non
 
 app = FastAPI(title="Kids Rewards API", version="1.0.0")
 
-# --- CORS Middleware ---
+# --- Response Envelope Middleware ---
+from envelope import EnvelopeMiddleware, register_exception_handlers, success_response  # noqa: E402
+
+app.add_middleware(EnvelopeMiddleware)
+register_exception_handlers(app)
+
+# --- CORS Middleware (must be outermost to add headers AFTER envelope wrapping) ---
 origins = [
     "http://localhost:3000",
     "http://localhost:3001",
@@ -102,12 +108,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# --- Response Envelope Middleware ---
-from envelope import EnvelopeMiddleware, register_exception_handlers, success_response  # noqa: E402
-
-app.add_middleware(EnvelopeMiddleware)
-register_exception_handlers(app)
 
 
 def paginated_response(items: list, limit: int, offset: int, total: int | None = None):
