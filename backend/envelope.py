@@ -35,7 +35,7 @@ class ApiResponse(BaseModel):
     meta: Optional[dict] = None
 
 
-SKIP_PATHS = {"/token", "/health", "/", "/hello", "/openapi.json", "/docs", "/redoc"}
+SKIP_PATHS = {"/token", "/health", "/", "/hello", "/openapi.json", "/docs", "/redoc", "/auth/api-key"}
 
 
 def _should_wrap(path: str) -> bool:

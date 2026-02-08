@@ -1,5 +1,6 @@
 import logging
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -60,3 +61,21 @@ def decode_access_token(token: str) -> Optional[str]:
         return username
     except JWTError:
         return None
+
+
+def generate_api_key(username: str) -> tuple[str, str]:
+    token_part = secrets.token_urlsafe(24)
+    full_key = f"{username}.{token_part}"
+    key_hash = pwd_context.hash(token_part)
+    return full_key, key_hash
+
+
+def verify_api_key(api_key: str) -> Optional[tuple[str, str]]:
+    dot_index = api_key.find(".")
+    if dot_index < 1:
+        return None
+    username = api_key[:dot_index]
+    token_part = api_key[dot_index + 1 :]
+    if not token_part:
+        return None
+    return username, token_part

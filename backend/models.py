@@ -25,6 +25,7 @@ class User(UserBase):  # User still has a role
     id: str  # Or int, depending on DB
     hashed_password: str
     points: Optional[int] = None  # Only applicable for kids
+    api_key_hash: Optional[str] = None
 
     class Config:
         from_attributes = True  # For Pydantic V2
@@ -413,3 +414,8 @@ class ChoreAssignmentApprovalRequest(BaseModel):
     assignment_id: str
     approve: bool  # True to approve, False to reject
     # parent_id will be from the authenticated user
+
+
+class ApiKeyResponse(BaseModel):
+    api_key: str
+    message: str

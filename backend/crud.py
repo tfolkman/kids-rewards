@@ -163,6 +163,26 @@ def update_user_points(username: str, points_to_add: int) -> Optional[models.Use
         return None
 
 
+def set_user_api_key_hash(username: str, key_hash: str) -> Optional[models.User]:
+    user = get_user_by_username(username)
+    if not user:
+        return None
+    try:
+        response = users_table.update_item(
+            Key={"username": username},
+            UpdateExpression="SET api_key_hash = :h",
+            ExpressionAttributeValues={":h": key_hash},
+            ReturnValues="ALL_NEW",
+        )
+        updated = response.get("Attributes")
+        if updated:
+            return models.User(**replace_decimals(updated))
+        return None
+    except ClientError as e:
+        logger.error("Error setting API key hash for %s: %s", username, e)
+        return None
+
+
 def promote_user_to_parent(username: str) -> Optional[models.User]:
     user = get_user_by_username(username)
     if not user:

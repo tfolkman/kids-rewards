@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from fastapi import Depends, FastAPI, HTTPException, Query, status  # noqa: E402
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, status  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm  # noqa: E402
 from mangum import Mangum  # Import Mangum # noqa: E402
@@ -147,6 +147,38 @@ async def create_user(user: models.UserCreate):
 @app.get("/users/me/", response_model=models.User)
 async def read_users_me(current_user: models.User = Depends(get_current_active_user)):  # noqa: B008
     return current_user
+
+
+@app.post("/users/me/api-key", response_model=models.ApiKeyResponse)
+async def generate_api_key(
+    current_user: models.User = Depends(get_current_active_user),  # noqa: B008
+):
+    full_key, key_hash = security.generate_api_key(current_user.username)
+    updated = crud.set_user_api_key_hash(current_user.username, key_hash)
+    if not updated:
+        raise HTTPException(status_code=500, detail="Could not save API key")
+    return models.ApiKeyResponse(
+        api_key=full_key,
+        message="Store this key securely -- it cannot be retrieved again.",
+    )
+
+
+@app.post("/auth/api-key", response_model=models.Token)
+async def auth_with_api_key(api_key: str = Body(..., embed=True)):
+    parsed = security.verify_api_key(api_key)
+    if not parsed:
+        raise HTTPException(status_code=401, detail="Invalid API key format")
+    username, token_part = parsed
+    user = crud.get_user_by_username(username)
+    if not user or not user.api_key_hash:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    if not security.verify_password(token_part, user.api_key_hash):
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = security.create_access_token(
+        data={"sub": user.username}, expires_delta=access_token_expires
+    )
+    return {"access_token": access_token, "token_type": "bearer"}
 
 
 @app.post("/users/promote-to-parent", response_model=models.User)

@@ -10,13 +10,17 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(level
 logger = logging.getLogger("kids-rewards-mcp")
 
 BASE_URL = os.environ.get("KIDS_REWARDS_API_URL", "http://localhost:3000")
+API_KEY = os.environ.get("KIDS_REWARDS_API_KEY")
+logger.info("API_KEY configured: %s", bool(API_KEY))
 
 mcp = FastMCP(
     "Kids Rewards",
     instructions=(
         "Manage a family chore and reward system. Parents create chores and store items, "
         "kids earn points by completing chores, and redeem points for rewards. "
-        "Includes pet care management. You must login first to get a token."
+        "Includes pet care management. "
+        "If KIDS_REWARDS_API_KEY is set, authentication is automatic. "
+        "Otherwise, call the login tool first."
     ),
 )
 
@@ -34,48 +38,71 @@ def _fmt(data) -> str:
     return json.dumps(data, indent=2, default=str)
 
 
-async def _get(path: str, params: dict | None = None) -> str:
+async def _authenticate_with_api_key() -> bool:
+    global _token
+    if not API_KEY:
+        return False
     try:
-        r = await _client.get(path, headers=_headers(), params=params)
-        logger.info("GET %s -> %d", path, r.status_code)
+        r = await _client.post("/auth/api-key", json={"api_key": API_KEY})
+        if r.status_code == 200:
+            result = r.json()
+            _token = result.get("access_token")
+            logger.info("API key authentication successful")
+            return True
+        logger.warning("API key authentication failed: %d", r.status_code)
+        return False
+    except httpx.HTTPError as exc:
+        logger.error("API key authentication error: %s", exc)
+        return False
+
+
+async def _ensure_authenticated():
+    if _token or not API_KEY:
+        return
+    await _authenticate_with_api_key()
+
+
+async def _request(
+    method: str,
+    path: str,
+    json_data: dict | None = None,
+    data: dict | None = None,
+    params: dict | None = None,
+) -> str:
+    await _ensure_authenticated()
+    try:
+        r = await _client.request(method, path, headers=_headers(), json=json_data, data=data, params=params)
+        logger.info("%s %s -> %d", method, path, r.status_code)
+        if r.status_code == 401 and API_KEY:
+            global _token
+            _token = None
+            if await _authenticate_with_api_key():
+                r = await _client.request(method, path, headers=_headers(), json=json_data, data=data, params=params)
+                logger.info("%s %s (retry) -> %d", method, path, r.status_code)
+        if method == "DELETE" and r.status_code != 200:
+            return _fmt({"success": True, "data": None})
         return _fmt(r.json())
     except httpx.HTTPError as exc:
-        logger.error("GET %s failed: %s", path, exc)
+        logger.error("%s %s failed: %s", method, path, exc)
         return _fmt({"success": False, "error": {"code": "CONNECTION_ERROR", "message": str(exc)}})
+
+
+async def _get(path: str, params: dict | None = None) -> str:
+    return await _request("GET", path, params=params)
 
 
 async def _post(
     path: str, json_data: dict | None = None, data: dict | None = None, params: dict | None = None
 ) -> str:
-    try:
-        r = await _client.post(path, headers=_headers(), json=json_data, data=data, params=params)
-        logger.info("POST %s -> %d", path, r.status_code)
-        return _fmt(r.json())
-    except httpx.HTTPError as exc:
-        logger.error("POST %s failed: %s", path, exc)
-        return _fmt({"success": False, "error": {"code": "CONNECTION_ERROR", "message": str(exc)}})
+    return await _request("POST", path, json_data=json_data, data=data, params=params)
 
 
 async def _put(path: str, json_data: dict) -> str:
-    try:
-        r = await _client.put(path, headers=_headers(), json=json_data)
-        logger.info("PUT %s -> %d", path, r.status_code)
-        return _fmt(r.json())
-    except httpx.HTTPError as exc:
-        logger.error("PUT %s failed: %s", path, exc)
-        return _fmt({"success": False, "error": {"code": "CONNECTION_ERROR", "message": str(exc)}})
+    return await _request("PUT", path, json_data=json_data)
 
 
 async def _delete(path: str) -> str:
-    try:
-        r = await _client.delete(path, headers=_headers())
-        logger.info("DELETE %s -> %d", path, r.status_code)
-        if r.status_code == 200:
-            return _fmt(r.json())
-        return _fmt({"success": True, "data": None})
-    except httpx.HTTPError as exc:
-        logger.error("DELETE %s failed: %s", path, exc)
-        return _fmt({"success": False, "error": {"code": "CONNECTION_ERROR", "message": str(exc)}})
+    return await _request("DELETE", path)
 
 
 # ── Auth & Users ──────────────────────────────────────────────
@@ -83,7 +110,7 @@ async def _delete(path: str) -> str:
 
 @mcp.tool()
 async def login(username: str, password: str) -> str:
-    """Authenticate and store a session token. Must be called before using any other tool.
+    """Authenticate and store a session token. Not needed if KIDS_REWARDS_API_KEY env var is set.
 
     Args:
         username: The user's login name.
@@ -243,7 +270,7 @@ async def purchase_store_item(item_id: str) -> str:
     Args:
         item_id: ID of the store item to purchase.
     """
-    return await _post("/store/items/purchase", json_data={"item_id": item_id})
+    return await _post("/kids/redeem-item/", json_data={"item_id": item_id})
 
 
 # ── Chores ────────────────────────────────────────────────────
@@ -386,7 +413,7 @@ async def approve_chore_submission(log_id: str) -> str:
     Args:
         log_id: ID of the chore log entry to approve.
     """
-    return await _post("/parent/chore-submissions/approve", json_data={"log_id": log_id})
+    return await _post("/parent/chore-submissions/approve", json_data={"chore_log_id": log_id})
 
 
 @mcp.tool()
@@ -397,7 +424,7 @@ async def reject_chore_submission(log_id: str, reason: str = "") -> str:
         log_id: ID of the chore log entry to reject.
         reason: Optional explanation for the rejection.
     """
-    return await _post("/parent/chore-submissions/reject", json_data={"log_id": log_id, "reason": reason})
+    return await _post("/parent/chore-submissions/reject", json_data={"chore_log_id": log_id, "reason": reason})
 
 
 # ── Chore Assignments ─────────────────────────────────────────
@@ -647,7 +674,7 @@ async def create_pet(
 
 @mcp.tool()
 async def update_pet(
-    pet_id: str, name: str, species: str, birthday: Optional[str] = None, photo_url: Optional[str] = None
+    pet_id: str, name: str, species: str, birthday: str, photo_url: Optional[str] = None
 ) -> str:
     """Update a pet's profile. Parent-only.
 
@@ -655,12 +682,10 @@ async def update_pet(
         pet_id: ID of the pet to update.
         name: Updated pet name.
         species: Updated species.
-        birthday: Updated birthday in YYYY-MM-DD format.
+        birthday: Pet's birthday in YYYY-MM-DD format.
         photo_url: Updated photo URL.
     """
-    payload = {"name": name, "species": species}
-    if birthday:
-        payload["birthday"] = birthday
+    payload: dict = {"name": name, "species": species, "birthday": birthday}
     if photo_url:
         payload["photo_url"] = photo_url
     return await _put(f"/pets/{pet_id}", json_data=payload)
@@ -850,7 +875,10 @@ async def add_health_log(pet_id: str, weight_grams: float, notes: str = "") -> s
         weight_grams: Weight in grams.
         notes: Optional health observations.
     """
-    return await _post(f"/pets/{pet_id}/health-logs/", json_data={"weight_grams": weight_grams, "notes": notes})
+    return await _post(
+        f"/pets/{pet_id}/health-logs/",
+        json_data={"pet_id": pet_id, "weight_grams": weight_grams, "notes": notes},
+    )
 
 
 @mcp.tool()

@@ -96,6 +96,22 @@ Backend requires these environment variables (set automatically by `just` comman
 3. Frontend stores in localStorage and adds to Authorization header
 4. Backend validates via `get_current_user` dependency
 
+### MCP API Key Authentication
+The MCP server supports automatic authentication via API key, avoiding password exposure in conversations.
+
+**Setup:**
+1. Start the backend and authenticate as a user
+2. Generate an API key: `POST /users/me/api-key` (authenticated) -- returns the key once
+3. Set `KIDS_REWARDS_API_KEY=<key>` in your `.mcp.json` env config
+4. The MCP server auto-authenticates on first API call and retries on 401
+
+**Key format:** `username.random_token` -- username prefix enables O(1) DynamoDB lookup.
+Only the bcrypt hash of the token part is stored; the full key is shown once at generation.
+
+**Endpoints:**
+- `POST /users/me/api-key` -- generate API key (authenticated, returns plaintext once)
+- `POST /auth/api-key` -- exchange API key for JWT (unauthenticated, body: `{"api_key": "..."}`)
+
 ### Role-Based Access
 - **Parent role**: Creating chores, managing store, approving purchases, managing pets
 - **Kid role**: Completing chores, requesting purchases, viewing assigned tasks
