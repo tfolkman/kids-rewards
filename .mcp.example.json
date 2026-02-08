@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "kids-rewards": {
+      "command": "/path/to/your/.venv/bin/python",
+      "args": ["/path/to/kids-rewards/mcp_server/server.py"],
+      "env": {
+        "KIDS_REWARDS_API_URL": "https://cf181i0c83.execute-api.us-west-2.amazonaws.com/Prod",
+        "KIDS_REWARDS_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
