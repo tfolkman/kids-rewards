@@ -184,9 +184,7 @@ async def auth_with_api_key(api_key: str = Body(..., embed=True)):
     if not security.verify_password(token_part, user.api_key_hash):
         raise HTTPException(status_code=401, detail="Invalid API key")
     access_token_expires = timedelta(minutes=security.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = security.create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
+    access_token = security.create_access_token(data={"sub": user.username}, expires_delta=access_token_expires)
     return {"access_token": access_token, "token_type": "bearer"}
 
 
