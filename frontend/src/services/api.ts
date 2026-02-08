@@ -26,6 +26,24 @@ apiClient.interceptors.request.use(
   }
 );
 
+// Unwrap API envelope: {success, data, meta, error} -> data
+apiClient.interceptors.response.use(
+  (response) => {
+    if (response.data && typeof response.data === 'object' && 'success' in response.data) {
+      response.data = response.data.data;
+    }
+    return response;
+  },
+  (error) => {
+    if (error.response?.data && typeof error.response.data === 'object' && 'error' in error.response.data) {
+      const apiError = error.response.data.error;
+      error.message = apiError?.message || error.message;
+      error.code = apiError?.code;
+    }
+    return Promise.reject(error);
+  }
+);
+
 // User types (can be expanded or moved to a dedicated types file)
 export interface User {
   id: string;

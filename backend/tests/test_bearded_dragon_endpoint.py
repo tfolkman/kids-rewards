@@ -122,8 +122,9 @@ def test_bearded_dragon_purchases_filtering():
             # Verify response status
             assert response.status_code == 200
 
-            # Parse response data
-            data = response.json()
+            # Parse response data (unwrap envelope)
+            body = response.json()
+            data = body["data"]
 
             # Verify correct number of purchases returned (should be 4: 3 from kids + 1 pending)
             assert len(data) == 4, f"Expected 4 purchases, got {len(data)}"

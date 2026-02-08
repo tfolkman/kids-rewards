@@ -105,7 +105,7 @@ class TestSpikeAutoApproval:
 
             # Assert: Response shows APPROVED (not PENDING_APPROVAL)
             assert response.status_code == 202
-            task_data = response.json()
+            task_data = response.json()["data"]
             assert task_data["status"] == "approved"
             assert task_data["submitted_at"] is not None
             assert task_data["reviewed_at"] is not None
@@ -141,7 +141,7 @@ class TestSpikeAutoApproval:
 
             # Assert: Status is PENDING_APPROVAL (not auto-approved)
             assert response.status_code == 202
-            task_data = response.json()
+            task_data = response.json()["data"]
             assert task_data["status"] == "pending_approval"
             assert task_data["reviewed_at"] is None  # Not reviewed yet
         finally:
