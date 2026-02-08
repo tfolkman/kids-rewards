@@ -419,3 +419,24 @@ class ChoreAssignmentApprovalRequest(BaseModel):
 class ApiKeyResponse(BaseModel):
     api_key: str
     message: str
+
+
+# Home Assistant Integration Models
+class HomeAssistantPetTask(BaseModel):
+    """Simplified pet care task for Home Assistant"""
+
+    pet_name: str
+    task_name: str
+    assigned_to: str  # Kid's username
+    due_time: str  # "HH:MM" format
+    status: str  # "pending", "done", "awaiting_approval"
+    points: int
+    is_overdue: bool
+
+
+class HomeAssistantTasksResponse(BaseModel):
+    """Response for HA pet tasks endpoint"""
+
+    today: str  # YYYY-MM-DD
+    tasks: list[HomeAssistantPetTask]
+    summary: dict  # {"total": 3, "done": 1, "pending": 2}

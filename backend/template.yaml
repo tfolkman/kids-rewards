@@ -24,6 +24,11 @@ Parameters:
     Type: String
     Description: The secret key for the application. Must be at least 32 characters long.
     Default: ""
+  HomeAssistantApiKey:
+    Type: String
+    Description: API key for Home Assistant integration. Must be at least 32 characters long.
+    NoEcho: true
+    Default: ""
 
 Resources:
   KidsRewardsLambdaFunction:
@@ -54,6 +59,7 @@ Resources:
           PET_CARE_TASKS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPetCareTasks", !Sub "${TableNamePrefix}KidsRewardsPetCareTasks"]
           PET_HEALTH_LOGS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPetHealthLogs", !Sub "${TableNamePrefix}KidsRewardsPetHealthLogs"]
           APP_SECRET_KEY: !Ref AppSecret
+          HOME_ASSISTANT_API_KEY: !Ref HomeAssistantApiKey
       Policies:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
         - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
@@ -450,6 +456,42 @@ Resources:
           Projection:
             ProjectionType: ALL
     DeletionPolicy: Retain
+
+  DailySpikeTaskGeneratorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      PackageType: Image
+      ImageUri: !Ref AppImageUri
+      ImageConfig:
+        Command:
+          - daily_tasks.lambda_handler
+      Architectures:
+        - x86_64
+      Timeout: 60
+      MemorySize: 256
+      Events:
+        DailySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 9 * * ? *)  # 9 AM UTC = 2 AM Mountain Time
+            Description: "Daily generation of Spike feeding tasks"
+            Enabled: true
+      Environment:
+        Variables:
+          DYNAMODB_ENDPOINT_OVERRIDE: !If [IsLocalEnvironment, !Ref LocalDynamoDBEndpoint, !Ref "AWS::NoValue"]
+          USERS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsUsers", !Sub "${TableNamePrefix}KidsRewardsUsers"]
+          PETS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPets", !Sub "${TableNamePrefix}KidsRewardsPets"]
+          PET_CARE_SCHEDULES_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPetCareSchedules", !Sub "${TableNamePrefix}KidsRewardsPetCareSchedules"]
+          PET_CARE_TASKS_TABLE_NAME: !If [IsLocalEnvironment, "KidsRewardsPetCareTasks", !Sub "${TableNamePrefix}KidsRewardsPetCareTasks"]
+          APP_SECRET_KEY: !Ref AppSecret
+          SPIKE_PARENT_ID: ""  # TO BE SET: Replace with actual parent user ID after deployment
+      Policies:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess
+    Metadata:
+      Dockerfile: Dockerfile
+      DockerContext: .
+      DockerTag: latest
 
 Conditions:
   IsLocalEnvironment: !Not [!Equals [!Ref LocalDynamoDBEndpoint, ""]]

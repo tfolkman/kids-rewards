@@ -79,3 +79,18 @@ def verify_api_key(api_key: str) -> Optional[tuple[str, str]]:
     if not token_part:
         return None
     return username, token_part
+
+
+# Home Assistant Integration
+def verify_ha_api_key(api_key: str) -> bool:
+    """Verify Home Assistant API key using constant-time comparison to prevent timing attacks"""
+    # Read env var dynamically to support test fixtures
+    configured_key = os.getenv("HOME_ASSISTANT_API_KEY")
+    if not configured_key:
+        logger.warning("HOME_ASSISTANT_API_KEY not configured")
+        return False
+    if len(configured_key) < 32:
+        logger.warning("HOME_ASSISTANT_API_KEY too short (must be at least 32 characters)")
+        return False
+    # Use constant-time comparison to prevent timing attacks
+    return secrets.compare_digest(api_key, configured_key)

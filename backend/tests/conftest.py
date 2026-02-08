@@ -8,12 +8,12 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.main import (
-    app,
-    get_current_active_user,
-    get_current_kid_user,
-    get_current_parent_user,
-)
+import main
+
+app = main.app
+get_current_active_user = main.get_current_active_user
+get_current_kid_user = main.get_current_kid_user
+get_current_parent_user = main.get_current_parent_user
 
 _current_file_dir = os.path.dirname(os.path.abspath(__file__))
 _project_root = os.path.abspath(os.path.join(_current_file_dir, "..", ".."))

@@ -43,6 +43,8 @@ def _should_wrap(path: str) -> bool:
         return False
     if path.startswith("/docs") or path.startswith("/redoc") or path.startswith("/openapi"):
         return False
+    if path.startswith("/api/home-assistant"):
+        return False
     return True
 
 

@@ -12,7 +12,7 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
-from fastapi import Body, Depends, FastAPI, HTTPException, Query, status  # noqa: E402
+from fastapi import Body, Depends, FastAPI, Header, HTTPException, Query, status  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm  # noqa: E402
 from mangum import Mangum  # Import Mangum # noqa: E402
@@ -73,6 +73,15 @@ async def get_current_kid_user(current_user: models.User = Depends(get_current_a
     if current_user.points is None:  # Should always be set for kids, but good to check
         current_user.points = 0  # Initialize if somehow None
     return current_user
+
+
+async def verify_home_assistant_api_key(x_ha_api_key: Optional[str] = Header(None)) -> bool:
+    """Verify Home Assistant API key"""
+    if not x_ha_api_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing X-HA-API-Key header")
+    if not security.verify_ha_api_key(x_ha_api_key):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid API key")
+    return True
 
 
 app = FastAPI(title="Kids Rewards API", version="1.0.0")
@@ -582,6 +591,69 @@ async def get_leaderboard():
     # Sort users by points (descending), putting users with None points at the end
     sorted_users = sorted(users, key=lambda u: u.points if u.points is not None else -1, reverse=True)
     return sorted_users
+
+
+@app.get("/api/home-assistant/pet-tasks/today", response_model=models.HomeAssistantTasksResponse)
+async def get_todays_pet_tasks_for_home_assistant(
+    authorized: bool = Depends(verify_home_assistant_api_key),  # noqa: B008, ARG001
+):
+    """
+    Get today's pet care tasks for Home Assistant.
+    Requires X-HA-API-Key header.
+    """
+    from datetime import datetime, time, timedelta, timezone
+
+    # Use Mountain Time (UTC-7) to determine "today"
+    mountain_tz = timezone(timedelta(hours=-7))
+    now_mountain = datetime.now(mountain_tz)
+    today = now_mountain.date()
+
+    # Get today's date range (naive datetimes to match DynamoDB storage)
+    # Tasks are stored as naive datetimes in DynamoDB
+    today_start = datetime.combine(today, time.min)
+    today_end = datetime.combine(today, time.max)
+
+    # Get all tasks and filter for today
+    all_tasks = crud.get_all_pet_care_tasks()
+    todays_tasks = [task for task in all_tasks if today_start <= task.due_date <= today_end]
+
+    # Transform to HA-friendly format
+    ha_tasks = []
+    for task in todays_tasks:
+        # Map status
+        if task.status == models.PetCareTaskStatus.APPROVED:
+            status_str = "done"
+        elif task.status == models.PetCareTaskStatus.PENDING_APPROVAL:
+            status_str = "awaiting_approval"
+        else:
+            status_str = "pending"
+
+        # Check overdue (using Mountain Time, converted to naive for comparison)
+        now_naive = now_mountain.replace(tzinfo=None)
+        is_overdue = task.due_date < now_naive and task.status != models.PetCareTaskStatus.APPROVED
+
+        ha_tasks.append(
+            models.HomeAssistantPetTask(
+                pet_name=task.pet_name,
+                task_name=task.task_name,
+                assigned_to=task.assigned_to_kid_username,
+                due_time=task.due_date.strftime("%H:%M"),
+                status=status_str,
+                points=task.points_value,
+                is_overdue=is_overdue,
+            )
+        )
+
+    # Summary
+    summary = {
+        "total": len(ha_tasks),
+        "done": sum(1 for t in ha_tasks if t.status == "done"),
+        "pending": sum(1 for t in ha_tasks if t.status == "pending"),
+        "awaiting_approval": sum(1 for t in ha_tasks if t.status == "awaiting_approval"),
+        "overdue": sum(1 for t in ha_tasks if t.is_overdue),
+    }
+
+    return models.HomeAssistantTasksResponse(today=today.isoformat(), tasks=ha_tasks, summary=summary)
 
 
 @app.get("/health")
@@ -1350,6 +1422,64 @@ async def reject_pet_care_task_submission(
     if not rejected_task:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to reject pet care task.")
     return rejected_task
+
+
+@app.post("/parent/pets/spike/generate-feeding-tasks", response_model=dict)
+async def generate_spike_feeding_tasks_endpoint(
+    days_ahead: int = 7,
+    current_parent: models.User = Depends(get_current_parent_user),  # noqa: B008
+):
+    """
+    Generate Spike feeding tasks for the next N days using hard-coded weekly pattern.
+
+    Pattern: Thu=aiden, Fri=clara, Sat=emery, Sun=aiden, Mon=clara, Tue=emery, Wed=aiden
+
+    Parent-only endpoint. Auto-skips dates that already have tasks.
+    """
+    # Get all parent's pets
+    parent_pets = crud.get_pets_by_parent_id(current_parent.id)
+
+    # Find Spike (case-insensitive)
+    spike = None
+    for pet in parent_pets:
+        if pet.name.lower() == "spike":
+            spike = pet
+            break
+
+    if not spike:
+        raise HTTPException(
+            status_code=404, detail="Spike not found in your pets. Please create Spike's profile first."
+        )
+
+    # Get existing "Feed Spike" task dates to avoid duplicates
+    all_spike_tasks = crud.get_tasks_by_pet_id(spike.id)
+    existing_dates = {task.due_date.date() for task in all_spike_tasks if task.task_name == "Feed Spike"}
+
+    # Generate new tasks
+    from pet_care import generate_spike_feeding_tasks
+
+    new_tasks = generate_spike_feeding_tasks(
+        pet_id=spike.id,
+        pet_name=spike.name,
+        parent_id=current_parent.id,
+        days_ahead=days_ahead,
+        existing_task_dates=existing_dates,
+    )
+
+    # Save to database
+    created_count = 0
+    for task_create in new_tasks:
+        created_task = crud.create_pet_care_task(task_create)
+        if created_task:
+            created_count += 1
+
+    return {
+        "message": f"Generated {created_count} Spike feeding task(s)",
+        "tasks_created": created_count,
+        "days_ahead": days_ahead,
+        "pet_id": spike.id,
+        "pet_name": spike.name,
+    }
 
 
 # Pet Health Logs

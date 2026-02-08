@@ -24,7 +24,7 @@ jobs:
     permissions:
       id-token: write # Required for AWS OIDC authentication
       contents: read   # Required to checkout the repository
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
 
     steps:
       - name: Checkout repository
@@ -74,4 +74,5 @@ jobs:
             --s3-prefix ${{ env.SAM_STACK_NAME }}/sam-artifacts \
             --no-fail-on-empty-changeset \
             --image-repositories KidsRewardsLambdaFunction=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
-            --parameter-overrides AppImageUri=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} AppSecret=${{ secrets.APP_SECRET_KEY }}
+            --image-repositories DailySpikeTaskGeneratorFunction=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }} \
+            --parameter-overrides AppImageUri=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:${{ github.sha }} AppSecret=${{ secrets.APP_SECRET_KEY }} HomeAssistantApiKey=${{ secrets.HOME_ASSISTANT_API_KEY }}

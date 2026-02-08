@@ -1,0 +1,6 @@
+{
+  "KidsRewardsLambdaFunction": {
+    "HOME_ASSISTANT_API_KEY": "REPLACE-WITH-SECURE-KEY-MIN-32-CHARS",
+    "APP_SECRET_KEY": "your-app-secret-key-here-min-32-chars"
+  }
+}
